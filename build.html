@@ -43,6 +43,10 @@
   .navlink { font-size:13px; font-weight:400; color:var(--dim); margin-left:12px; text-decoration:none; }
   .navlink:hover { color:var(--accent); }
   .missing { color:var(--bad); font-size:12px; }
+  h2.boxhead { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  h2.boxhead button { text-transform:none; letter-spacing:0; }
+  td.act { width:1%; white-space:nowrap; text-align:right; }
+  .intro { color:var(--dim); margin:0 0 16px; max-width:760px; }
   code { background:var(--bg); padding:1px 5px; border-radius:4px; }
 </style>
 </head>
@@ -52,6 +56,8 @@
   <div id="account" class="muted"></div>
 </header>
 <main>
+  <p class="intro">A randomized, but somewhat synergistic, loadout. Every roll is different, but the subclass, abilities, aspects, fragments, armor, and mods are chosen to work with the exotic armor it lands on, so each build should hold together.</p>
+
   <section id="setup" class="card" hidden>
     <h2>Setup required</h2>
     <p>Edit <code>CONFIG</code> near the top of the script in this file: paste your Bungie API key and OAuth client ID, then redeploy.</p>
@@ -65,9 +71,6 @@
     <div class="controls">
       <label>Character <select id="charSelect"></select></label>
       <button id="btnRollAll" class="primary">Roll build</button>
-      <button id="btnRollArmor">Reroll armor + subclass</button>
-      <button id="btnRollSubclass">Reroll subclass</button>
-      <button id="btnRollWeapons">Reroll weapons</button>
       <button id="btnRefresh">Refresh inventory</button>
       <button id="btnSignOut">Sign out</button>
     </div>
@@ -79,15 +82,15 @@
         <label><input type="checkbox" data-rule="noDoubleSpecial"> No double special</label>
         <label><input type="checkbox" data-rule="guaranteedExoticWeapon"> Guaranteed exotic weapon</label>
         <label><input type="checkbox" data-rule="unownedExotics"> Include unowned exotic weapons (pull from Collections)</label>
-        <label><input type="checkbox" data-rule="mods"> Apply mods</label>
+        <label><input type="checkbox" data-rule="mods"> Apply mods <span class="muted">(slow: each mod is a separate change sent through Bungie to the game, so a full set can add a minute or more to Equip)</span></label>
       </div>
       <div id="sheetStatus" class="muted" style="margin-top:8px">Synergy sheet: loading…</div>
     </div>
 
     <div class="grid">
-      <div class="card"><h2>Subclass</h2><table id="subclassTable"></table></div>
-      <div class="card"><h2>Weapons</h2><table id="weaponTable"></table><div id="weaponNote" class="note" hidden></div></div>
-      <div class="card"><h2>Armor</h2><table id="armorTable"></table></div>
+      <div class="card"><h2 class="boxhead">Subclass <button id="btnRollSubclass" class="small">Reroll subclass</button></h2><table id="subclassTable"></table></div>
+      <div class="card"><h2 class="boxhead">Weapons <button id="btnRollWeapons" class="small">Reroll weapons</button></h2><table id="weaponTable"></table><div id="weaponNote" class="note" hidden></div></div>
+      <div class="card"><h2 class="boxhead">Armor <button id="btnRollArmor" class="small">Reroll armor + subclass</button></h2><table id="armorTable"></table></div>
     </div>
 
     <div class="card"><h2>Mods</h2><table id="modTable"></table></div>
@@ -233,6 +236,14 @@ async function bungie(path, { method = "GET", body } = {}) {
     throw new Error(`${json.ErrorStatus}: ${json.Message}`);
   }
   throw new Error("Bungie is throttling requests. Wait a moment and retry.");
+}
+
+/* Socket changes start at least 500 ms apart (DIM's limit); the request's own round trip counts toward the gap. */
+let lastSocketChange = 0;
+async function socketGap() {
+  const wait = lastSocketChange + 500 - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastSocketChange = Date.now();
 }
 
 async function runPool(items, n, fn) {
@@ -602,12 +613,36 @@ function unownedExoticWeapons(off) {
   return Object.values(byName);
 }
 
-function rollWeapons(rules, E) {
+function weaponPool(rules, E) {
   const off = exoticOff("w");
   const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && i.def.ammo
     && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name)))
     && elementOK(i.def.bucket, i.dmg, E));
   if (rules.unownedExotics) pool.push(...unownedExoticWeapons(off).filter(v => elementOK(v.def.bucket, v.dmg, E)));
+  return pool;
+}
+
+/* Reroll one weapon slot, keeping the other two and all weapon rules. */
+function rerollWeaponSlot(rules, E, bucket) {
+  const cur = state.roll.weapons || [];
+  const old = cur.find(i => i.def.bucket === bucket);
+  const fixed = cur.filter(i => i.def.bucket !== bucket);
+  const ammo = { 1: 0, 2: 0, 3: 0 };
+  for (const i of fixed) ammo[i.def.ammo]++;
+  const exoFixed = fixed.some(isExo);
+  let cands = weaponPool(rules, E).filter(i => i.def.bucket === bucket
+    && (!exoFixed || !isExo(i))
+    && !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1])
+    && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]));
+  if (rules.guaranteedExoticWeapon && !exoFixed) cands = cands.filter(isExo);
+  if (!cands.length) throw new Error(`No other ${SLOT_NAME[bucket]} weapon fits the rules with the other two weapons.`);
+  const fresh = cands.filter(i => !old || i.def.name !== old.def.name);
+  const p = pickByName(fresh.length ? fresh : cands);
+  return cur.map(i => i.def.bucket === bucket ? p : i);
+}
+
+function rollWeapons(rules, E) {
+  const pool = weaponPool(rules, E);
   if (rules.guaranteedExoticWeapon && !pool.some(isExo)) {
     throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
   }
@@ -628,7 +663,7 @@ function rollWeapons(rules, E) {
   throw new Error("Couldn't build a weapon loadout that meets the rules" + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
 }
 
-async function rollArmor(rules, cls) {
+async function rollArmor(rules, cls, exoticName) {
   const off = exoticOff("a");
   const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls
     && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name))));
@@ -638,7 +673,8 @@ async function rollArmor(rules, cls) {
     const picks = {};
     let exo = false, ok = true;
     const take = i => { picks[i.def.bucket] = i; if (isExo(i)) exo = true; };
-    if (rules.guaranteedExoticArmor) take(pickByName(pool.filter(isExo)));
+    if (exoticName) take(pick(pool.filter(i => isExo(i) && i.def.name === exoticName)));
+    else if (rules.guaranteedExoticArmor) take(pickByName(pool.filter(isExo)));
     for (const b of shuffle(ARMOR_BUCKETS)) {
       if (picks[b]) continue;
       const p = pickByName(pool.filter(i => i.def.bucket === b && (!exo || !isExo(i))));
@@ -670,12 +706,12 @@ async function rollArmor(rules, cls) {
   });
 }
 
-async function rollSubclass(cid, exoticName) {
+async function rollSubclass(cid, exoticName, chosenInfo) {
   const infos = await getSubclassInfo(cid);
   if (!infos.length) throw new Error("Couldn't read subclasses for this character.");
   const { cands, rule, why } = synergyCandidates(infos, exoticName);
   if (why) log(why);
-  const info = pick(cands);
+  const info = chosenInfo && cands.includes(chosenInfo) ? chosenInfo : pick(cands);
   const ctx = buildContext(exoticName);
   if (ctx.tags.size || ctx.mentions.size) log(`Weighting for ${exoticName}: ${[...ctx.tags].join(", ") || "—"}${ctx.mentions.size ? " · mentions " + [...ctx.mentions].join(", ") : ""}`);
   if (!info.groups.supers.length && !info.groups.abilities.length) log(`${info.s.def.name}: couldn't read its sockets; only the subclass itself will change.`);
@@ -797,7 +833,8 @@ function synergyText(name) {
 }
 
 /* ---------- synergy rules (your sheet first, DIM's data as fallback) ---------- */
-const EL_NUM = { arc: 2, solar: 3, void: 4, stasis: 6, strand: 7 };
+const EL_NUM = { arc: 2, solar: 3, void: 4, stasis: 6, strand: 7, prismatic: "prism" };
+const elementalOnly = els => els.filter(e => typeof e === "number");
 const splitList = v => String(v || "").split(",").map(x => x.trim()).filter(Boolean);
 
 function parseCSV(text) {
@@ -882,8 +919,9 @@ function ruleGroups(rule, info) {
   const lists = prism && rule.prismNeeds.length ? rule.prismNeeds.map(x => [x]) : [rule.supers, rule.grenades, rule.melees, rule.aspects];
   for (const l of [...lists, rule.classAbilities, rule.movement]) if (l.length) groups.push({ label: l.join(" / "), names: new Set(l.map(norm)) });
   // Element-only rows: on Prismatic, make sure an ability of that element is equipped.
-  if (prism && rule.elements.length && rule.forceEl !== "N" && !hasReqs(rule) && !rule.prismNeeds.length) {
-    groups.push({ label: "a " + rule.elements.map(e => DMG_NAME[e]).join("/") + " grenade or melee", element: new Set(rule.elements), abilityOnly: true });
+  const els = elementalOnly(rule.elements);
+  if (prism && els.length && rule.forceEl !== "N" && !hasReqs(rule) && !rule.prismNeeds.length) {
+    groups.push({ label: "a " + els.map(e => DMG_NAME[e]).join("/") + " grenade or melee", element: new Set(els), abilityOnly: true });
   }
   return groups;
 }
@@ -898,9 +936,13 @@ function plugMeets(h, g) {
 
 function subclassFits(rule, info) {
   if (info.element === "prism") {
-    const agnostic = !rule.elements.length && !hasReqs(rule);
-    if (rule.prism !== "Y" && !agnostic) return false;
-  } else if (rule.elements.length && !rule.elements.includes(info.element)) return false;
+    const agnostic = !elementalOnly(rule.elements).length && !hasReqs(rule);
+    if (rule.prism !== "Y" && !rule.elements.includes("prism") && !agnostic) return false;
+  } else {
+    const els = elementalOnly(rule.elements);
+    if (rule.elements.includes("prism") && !els.length) return false;   // Prismatic only
+    if (els.length && !els.includes(info.element)) return false;
+  }
   const abilityPlugs = [...info.groups.supers, ...info.groups.abilities].flatMap(idx => info.choices(idx));
   const aspectPlugs = info.groups.aspects.flatMap(idx => info.choices(idx));
   return ruleGroups(rule, info).every(g => abilityPlugs.some(h => plugMeets(h, g)) || (!g.abilityOnly && aspectPlugs.some(h => plugMeets(h, g))));
@@ -918,9 +960,9 @@ function synergyText(name) {
   const r = exoticRule(name);
   if (!r) return "";
   const parts = [];
-  parts.push(r.elements.length ? r.elements.map(e => DMG_NAME[e]).join(", ") : "Any element");
+  parts.push(r.elements.length ? r.elements.map(e => e === "prism" ? "Prismatic" : DMG_NAME[e]).join(", ") : "Any element");
   for (const l of [r.supers, r.grenades, r.melees, r.classAbilities, r.movement, r.aspects]) if (l.length) parts.push(l.join(" / "));
-  parts.push(r.prism === "Y" || (!r.elements.length && !hasReqs(r)) ? "Prismatic OK" : "No Prismatic");
+  if (!(r.elements.length === 1 && r.elements[0] === "prism")) parts.push(r.prism === "Y" || r.elements.includes("prism") || (!elementalOnly(r.elements).length && !hasReqs(r)) ? "Prismatic OK" : "No Prismatic");
   if (r.focus.length) parts.push("Focus: " + r.focus.join(", "));
   return parts.join(" · ") + (r.source === "DIM" ? " (DIM data)" : "");
 }
@@ -1052,6 +1094,7 @@ async function applyMods(plans, cid) {
       .sort((a, b) => a.delta - b.delta); // free energy before spending it
     for (const ch of changes) {
       try {
+        await socketGap();
         const res = await bungie("/Destiny2/Actions/Items/InsertSocketPlugFree/", {
           method: "POST",
           body: { plug: { socketIndex: ch.idx, socketArrayType: 0, plugItemHash: ch.hash }, itemId: plan.item.id, characterId: cid, membershipType: m.type },
@@ -1062,7 +1105,6 @@ async function applyMods(plans, cid) {
         if (/SocketAlreadyHasPlug/i.test(e.message)) cur[ch.idx] = ch.hash;
         else ch.error = e.message;
       }
-      await sleep(500);
     }
     for (const p of plan.placed) {
       if (cur[p.idx] !== p.hash) problems.push(`${p.name} on ${plan.item.def.name}${changes.find(c => c.idx === p.idx)?.error ? ` (${changes.find(c => c.idx === p.idx).error})` : ""}`);
@@ -1082,7 +1124,7 @@ function locationLabel(i) {
   return i.equipped ? `${who} (equipped)` : who;
 }
 
-function itemRow(i, sub) {
+function itemRow(i, sub, action) {
   const tr = document.createElement("tr");
   const tdIcon = document.createElement("td");
   if (i.def.icon) { const img = document.createElement("img"); img.src = BUNGIE + i.def.icon; img.alt = ""; tdIcon.append(img); }
@@ -1094,8 +1136,17 @@ function itemRow(i, sub) {
   s.textContent = sub;
   tdName.append(s);
   const tdLoc = document.createElement("td");
-  tdLoc.className = "muted";
-  tdLoc.textContent = locationLabel(i);
+  if (action) {
+    tdLoc.className = "act";
+    const b = document.createElement("button");
+    b.className = "small"; b.textContent = "Reroll"; b.title = "Reroll this weapon";
+    b.onclick = action;
+    b.dataset.reroll = "1";
+    tdLoc.append(b);
+  } else {
+    tdLoc.className = "muted";
+    tdLoc.textContent = locationLabel(i);
+  }
   tr.append(tdIcon, tdName, tdLoc);
   return tr;
 }
@@ -1127,10 +1178,10 @@ function labelRow(label, value) {
 
 function renderRoll() {
   const wt = $("weaponTable"); wt.replaceChildren();
-  for (const i of state.roll.weapons || []) wt.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${AMMO_NAME[i.def.ammo]} · ${DMG_NAME[i.dmg] || ""} ${i.def.typeName}`));
+  for (const i of state.roll.weapons || []) wt.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${AMMO_NAME[i.def.ammo]} · ${DMG_NAME[i.dmg] || ""} ${i.def.typeName}`, () => busy(() => rerollOne(i.def.bucket))));
   const at = $("armorTable"); at.replaceChildren();
   for (const i of state.roll.armor || []) {
-    at.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${i.power}${isExo(i) ? " · Synergy: " + synergyText(i.def.name) : ""}`));
+    at.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${i.power}`));
   }
   const mt = $("modTable"); mt.replaceChildren();
   for (const plan of state.roll.mods || []) {
@@ -1323,6 +1374,7 @@ async function applySubclass(r) {
   const insert = async (idx, hash) => {
     if (!hash || cur[idx] === hash) return;
     try {
+      await socketGap();
       const res = await bungie("/Destiny2/Actions/Items/InsertSocketPlugFree/", {
         method: "POST",
         body: { plug: { socketIndex: idx, socketArrayType: 0, plugItemHash: hash }, itemId: item.id, characterId: charId, membershipType: m.type },
@@ -1335,7 +1387,6 @@ async function applySubclass(r) {
       if (/SocketAlreadyHasPlug/i.test(e.message)) cur[idx] = hash; // already there: success
       else r.errors[hash] = e.message;
     }
-    await sleep(500);
   };
   r.finalCur = cur;
   const placeGroup = async (idxs, targets) => {
@@ -1422,6 +1473,7 @@ async function equipRoll() {
 const BUSY_IDS = ["btnRollAll", "btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRefresh", "btnEquip", "charSelect"];
 function setBusy(b) {
   for (const id of BUSY_IDS) $(id).disabled = b;
+  for (const el of document.querySelectorAll("[data-reroll]")) el.disabled = b;
   if (!b) $("btnEquip").disabled = !((state.roll.weapons || []).length || (state.roll.armor || []).length || state.roll.subclass);
 }
 
@@ -1438,13 +1490,40 @@ async function weaponElement(cid) {
   return await equippedElement(cid);
 }
 
+/* Subclass first (equal odds among subclasses at least one eligible exotic works with), then an exotic that fits it. */
+async function pickSubclassAndExotic(cid, cls) {
+  const infos = await getSubclassInfo(cid);
+  const off = exoticOff("a");
+  const names = [...new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && isExo(i) && !off.has(i.def.name)).map(i => i.def.name))];
+  if (!names.length) throw new Error(`No eligible exotic armor for ${CLASS_NAME[cls]} (check the exotic list).`);
+  const options = infos.map(info => ({ info, names: names.filter(n => subclassFits(exoticRule(n), info)) })).filter(o => o.names.length);
+  if (!options.length) { log("No exotic fits any subclass; rolling without synergy."); return { info: null, exotic: pick(names) }; }
+  const o = pick(options);
+  log(`${o.info.s.def.name}: ${o.names.length} of your exotics fit (${options.length} subclasses have at least one).`);
+  return { info: o.info, exotic: pick(o.names) };
+}
+
+async function rerollOne(bucket) {
+  state.roll.weapons = rerollWeaponSlot(state.rules, 0, bucket);
+  if (state.rules.mods && state.roll.armor) {
+    try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
+    catch (e) { log("Couldn't plan mods: " + e.message); }
+  }
+  renderRoll();
+}
+
 async function doRoll({ subclass, weapons, armor }) {
   const cid = selectedChar();
+  const cls = selectedClass();
   const rules = state.rules;
-  if (armor) { state.roll.armor = await rollArmor(rules, selectedClass()); state.roll.armorClass = selectedClass(); }
-  if (subclass || armor) {
-    const exo = (state.roll.armor || []).find(isExo);
-    state.roll.subclass = await rollSubclass(cid, state.roll.armorClass === selectedClass() ? exo?.def.name : null);
+  if (armor) {
+    const { info, exotic } = await pickSubclassAndExotic(cid, cls);
+    state.roll.armor = await rollArmor(rules, cls, exotic);
+    state.roll.armorClass = cls;
+    state.roll.subclass = await rollSubclass(cid, exotic, info);
+  } else if (subclass) {
+    const exo = state.roll.armorClass === cls ? (state.roll.armor || []).find(isExo) : null;
+    state.roll.subclass = await rollSubclass(cid, exo?.def.name);
   }
   if (weapons) state.roll.weapons = rollWeapons(rules, 0);
   state.roll.mods = null;
