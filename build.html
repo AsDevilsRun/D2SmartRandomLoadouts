@@ -47,6 +47,20 @@
   h2.boxhead button { text-transform:none; letter-spacing:0; }
   td.act { width:1%; white-space:nowrap; text-align:right; }
   .intro { color:var(--dim); margin:0 0 16px; max-width:760px; }
+  .toast-wrap { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:50; max-width:min(380px, calc(100vw - 32px)); }
+  .toast { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:8px; padding:10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.45); transition:opacity .4s; }
+  .toast.ok { border-left-color:var(--good); }
+  .toast.bad { border-left-color:var(--bad); }
+  .toast-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .toast-x { background:none; border:none; color:var(--dim); font-size:18px; padding:0 4px; cursor:pointer; }
+  .toast-phase { margin:2px 0 6px; font-size:13px; }
+  .toast-icons { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0; }
+  .toast-icons img { width:32px; height:32px; border-radius:3px; transition:opacity .2s, transform .2s; }
+  .toast-icons img.pending { opacity:.3; transform:scale(.8); }
+  .toast-icons img.fail { outline:2px solid var(--bad); }
+  .toast-msg { font-size:12px; margin-top:4px; }
+  .toast-msg.err { color:var(--bad); }
+  .toast-msg.warn { color:var(--accent); }
   code { background:var(--bg); padding:1px 5px; border-radius:4px; }
 </style>
 </head>
@@ -80,8 +94,10 @@
       <h2>Rules</h2>
       <div class="rules">
         <label><input type="checkbox" data-rule="noDoublePrimary"> No double primary</label>
-        <label><input type="checkbox" data-rule="noDoubleSpecial"> No double special</label>
+        <label><input type="checkbox" data-rule="noDoubleSpecial" data-excl="guaranteedDoubleSpecial"> No double special</label>
+        <label><input type="checkbox" data-rule="guaranteedDoubleSpecial" data-excl="noDoubleSpecial"> Guaranteed double special</label>
         <label><input type="checkbox" data-rule="guaranteedExoticWeapon"> Guaranteed exotic weapon</label>
+        <label><input type="checkbox" data-rule="mono"> Monochromatic <span class="muted">(weapons match the subclass element; Prismatic matches the super)</span></label>
         <label><input type="checkbox" data-rule="unownedExotics"> Include unowned exotic weapons (pull from Collections)</label>
         <label><input type="checkbox" data-rule="mods"> Apply mods <span class="muted">(slow: each mod is a separate change sent through Bungie to the game, so a full set can add a minute or more to Equip)</span></label>
       </div>
@@ -179,7 +195,7 @@ const ITEMTYPE_ARMOR = 2, ITEMTYPE_WEAPON = 3, ITEMTYPE_SUBCLASS = 16;
 const VAULT = "vault";
 const VAULT_BUCKET = 138197802;
 const CHAR_BUCKET_CAPACITY = 9;
-const DEFAULT_RULES = { unownedExotics: false, noDoublePrimary: true, noDoubleSpecial: true, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mods: true, mono: false };
+const DEFAULT_RULES = { unownedExotics: false, noDoublePrimary: true, noDoubleSpecial: true, guaranteedDoubleSpecial: false, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mods: true, mono: false };
 
 /* ---------- utilities ---------- */
 const $ = id => document.getElementById(id);
@@ -209,7 +225,7 @@ const state = {
   items: [],
   socketData: null,
   subInfo: {},
-  rules: Object.assign({}, DEFAULT_RULES, store.get("d2b_rules") || {}, { guaranteedExoticArmor: true, mono: false }),
+  rules: Object.assign({}, DEFAULT_RULES, store.get("d2b_rules") || {}, { guaranteedExoticArmor: true }),
   synergy: {},
   sheet: null,
   focusMap: {},
@@ -334,6 +350,7 @@ function slimDefs(raw) {
       typeName: d.itemTypeDisplayName || "",
       dmg: d.defaultDamageType || 0,
       coll: d.collectibleHash || 0,
+      set: d.equippingBlock?.equipableItemSetHash || 0,
     };
   }
   return { out, plugs };
@@ -620,7 +637,8 @@ function weaponPool(rules, E) {
     && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name)))
     && elementOK(i.def.bucket, i.dmg, E));
   if (rules.unownedExotics) pool.push(...unownedExoticWeapons(off).filter(v => elementOK(v.def.bucket, v.dmg, E)));
-  return pool;
+  // Guaranteed double special: kinetic and energy slots both take special-ammo weapons.
+  return rules.guaranteedDoubleSpecial ? pool.filter(i => i.def.bucket === BUCKET.POWER || i.def.ammo === 2) : pool;
 }
 
 /* ---------- weapon synergy ----------
@@ -705,13 +723,13 @@ function rerollWeaponSlot(rules, E, bucket, need = weaponNeed(), forceNeed = fal
 }
 
 /* After armor or subclass changes, swap one weapon if a weapon need is no longer met. */
-function ensureWeaponNeed(rules) {
+function ensureWeaponNeed(rules, E = 0) {
   const need = weaponNeed();
   const cur = state.roll.weapons;
   if (!need || !cur || cur.some(i => meetsNeed(i, need))) return;
   for (const b of shuffle(WEAPON_BUCKETS)) {
     try {
-      state.roll.weapons = rerollWeaponSlot(rules, 0, b, need, true);
+      state.roll.weapons = rerollWeaponSlot(rules, E, b, need, true);
       log(`Swapped a weapon to add ${need.label}.`);
       return;
     } catch { /* try another slot */ }
@@ -723,7 +741,13 @@ function rollWeapons(rules, E) {
   const pool = weaponPool(rules, E);
   const tags = buildTags();
   let need = weaponNeed();
-  if (need && !pool.some(i => meetsNeed(i, need))) { log(`You have no eligible ${need.label}; ignoring that weapon synergy.`); need = null; }
+  if (need && !pool.some(i => meetsNeed(i, need))) {
+    const why = [];
+    if (E && weaponPool(rules, 0).some(i => meetsNeed(i, need))) why.push(`${DMG_NAME[E]} Monochromatic`);
+    if (rules.guaranteedDoubleSpecial && weaponPool({ ...rules, guaranteedDoubleSpecial: false }, E).some(i => meetsNeed(i, need))) why.push("Guaranteed double special");
+    log(why.length ? `${why.join(" and ")} rules out ${need.label}; ignoring that weapon synergy.` : `You have no eligible ${need.label}; ignoring that weapon synergy.`);
+    need = null;
+  }
   if (rules.guaranteedExoticWeapon && !pool.some(isExo)) {
     throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
   }
@@ -749,7 +773,7 @@ function rollWeapons(rules, E) {
     }
     if (ok) return WEAPON_BUCKETS.map(b => picks[b]);
   }
-  throw new Error("Couldn't build a weapon loadout that meets the rules" + (need ? ` with ${need.label}` : "") + ".");
+  throw new Error("Couldn't build a weapon loadout that meets the rules" + (need ? ` with ${need.label}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
 }
 
 async function rollArmor(rules, cls, exoticName) {
@@ -776,12 +800,9 @@ async function rollArmor(rules, cls, exoticName) {
 
   // Archetypes from the exotic's Focus (sheet Focus tab).
   const exo = set.find(isExo);
-  const focus = exo ? (state.sheet?.[norm(exo.def.name)]?.focus || []) : [];
-  const allowed = new Set(focus.flatMap(f => state.focusMap[norm(f)] || []));
-  if (!allowed.size) return set;
-  log(`Archetypes for ${exo.def.name} (${focus.join(", ")}): ${[...allowed].join(", ")}. Reading armor archetypes…`);
-  const arch = await armorArchetypes(pool);
-  const okArch = i => allowed.has(arch[i.id]);
+  const fa = await focusArchetypes(exo, pool, true);
+  if (!fa) return set;
+  const { allowed, okArch } = fa;
   return set.map(piece => {
     const same = isExo(piece)
       ? pool.filter(i => i.def.name === piece.def.name)
@@ -793,6 +814,101 @@ async function rollArmor(rules, cls, exoticName) {
     }
     return isExo(piece) ? pick(good) : pickByName(good);
   });
+}
+
+/* Archetypes allowed by the exotic's Focus, and a test for armor pieces; null when the Focus names none. */
+async function focusArchetypes(exo, pool, verbose) {
+  const focus = exo ? (state.sheet?.[norm(exo.def.name)]?.focus || []) : [];
+  const allowed = new Set(focus.flatMap(f => state.focusMap[norm(f)] || []));
+  if (!allowed.size) return null;
+  if (verbose) log(`Archetypes for ${exo.def.name} (${focus.join(", ")}): ${[...allowed].join(", ")}. Reading armor archetypes…`);
+  const arch = await armorArchetypes(pool);
+  return { allowed, okArch: i => allowed.has(arch[i.id]) };
+}
+
+/* ---------- armor set bonuses ----------
+   Rankings and tags from the Endgame Analysis "Set Bonuses" tab (tier) and the Compendium "Armor Perks" tab (triggers).
+   w = tier weight (S 2.0 … F 0.5, PvP-only 0.3), t = mechanic tags, wt = weapon types the bonus needs. */
+const SET_BONUSES = {"Atheon's Memory":{"4":{"n":"Collective Power","w":2.0,"t":["amplified","bolt","devour","frostarmor","heal","invis","orb","overshield","radiant","super","wovenmail"],"wt":[]},"2":{"n":"Radiolaria Breach","w":0.8,"t":["heal","orb"],"wt":[]}},"Exodus Down":{"4":{"n":"Repurposed Charge","w":2.0,"t":["heal","resist"],"wt":[]},"2":{"n":"Emergency Electromagnet","w":1.0,"t":["heal","orb"],"wt":[]}},"Promised":{"2":{"n":"Stable Resonance","w":2.0,"t":["resist"],"wt":[]},"4":{"n":"Resonance Redirection","w":1.3,"t":["weapon"],"wt":[]}},"TM Custom":{"4":{"n":"High Noon","w":2.0,"t":["weapon"],"wt":[]},"2":{"n":"Old Martian Diplomacy","w":1.3,"t":["heal"],"wt":[]}},"CODA":{"4":{"n":"So Very Thin","w":2.0,"t":["grenade","melee","resist","weapon"],"wt":[]},"2":{"n":"Between Poles","w":0.8,"t":["grenade","melee","weapon"],"wt":[]}},"Smoke Jumper":{"2":{"n":"Ride Together, Die Together","w":1.6,"t":["orb","resist"],"wt":[]},"4":{"n":"Too Old for This","w":1.0,"t":["heal","melee"],"wt":[]}},"Legacy's Oath":{"2":{"n":"Augmented Servos","w":1.6,"t":["melee"],"wt":[]},"4":{"n":"God-like Judgment","w":1.0,"t":["heal","super"],"wt":[]}},"Crystocrene":{"2":{"n":"Resupply","w":1.6,"t":["orb"],"wt":[]},"4":{"n":"From the Storm","w":0.8,"t":["frostarmor"],"wt":[]}},"Nezarec's Nightmare":{"4":{"n":"Dream-Devourer","w":1.6,"t":["devour","melee","resist"],"wt":[]},"2":{"n":"Bad Dreams","w":1.0,"t":["orb"],"wt":[]}},"Pantheos Resplendent":{"2":{"n":"Well Prepared","w":1.6,"t":["heal"],"wt":[]},"4":{"n":"Down the Line","w":0.8,"t":[],"wt":[]}},"Oryx's Memory":{"4":{"n":"Ascendant Escape","w":1.6,"t":["heal","invis"],"wt":[]},"2":{"n":"Iron Sharpens Iron","w":1.6,"t":[],"wt":[]}},"Deep Explorer":{"4":{"n":"Bittersweet","w":1.6,"t":["heal"],"wt":[]},"2":{"n":"Built Bitter","w":0.65,"t":["heal","weapon"],"wt":[]}},"AION Adapter":{"2":{"n":"Force Absorption","w":1.6,"t":["resist"],"wt":["Grenade Launcher","Rocket Launcher"]},"4":{"n":"Reactive Shock","w":1.0,"t":["melee"],"wt":[]}},"Great Hunt":{"4":{"n":"Taken Armaments","w":1.6,"t":["grenade"],"wt":[]},"2":{"n":"Taken Barrier","w":1.3,"t":["grenade","resist"],"wt":[]}},"Techeun's Regalia":{"4":{"n":"Truth to Power","w":1.6,"t":["class","grenade","heal","melee","resist"],"wt":[]},"2":{"n":"Queensfoil Rush","w":1.0,"t":["heal","melee","overshield","slow"],"wt":[]}},"Sage Protector":{"2":{"n":"Combat Meditation","w":1.6,"t":["class","grenade"],"wt":["Sword"]},"4":{"n":"Blade Focus","w":1.0,"t":[],"wt":["Sword"]}},"Crota's Memory":{"4":{"n":"Power of the Son","w":1.6,"t":["resist"],"wt":[]},"2":{"n":"Cursed Fist","w":1.0,"t":["melee"],"wt":[]}},"Iron Panoply":{"4":{"n":"Iron Conviction","w":1.3,"t":["heal","resist"],"wt":[]},"2":{"n":"Vigilant Watch","w":1.3,"t":["heal","weapon"],"wt":[]}},"Iron Battalion":{"4":{"n":"Supercyclical","w":1.3,"t":["super"],"wt":[]},"2":{"n":"Primary Honing","w":1.0,"t":["weapon"],"wt":[]}},"Reverie Dawn":{"2":{"n":"A Wish for Protection","w":1.3,"t":["amplified","heal","weapon"],"wt":[]},"4":{"n":"A Wish Fulfilled","w":1.0,"t":["heal"],"wt":[]}},"Swordmaster":{"4":{"n":"Stesso Tempo","w":1.3,"t":["resist"],"wt":["Glaive","Sword"]},"2":{"n":"Balestra","w":1.3,"t":["melee"],"wt":["Glaive","Sword"]}},"Yearning Echo":{"4":{"n":"Overflowing Coffers","w":1.3,"t":["heal","orb","tangle"],"wt":[]},"2":{"n":"Untold Greed","w":1.0,"t":["heal","orb","resist","tangle","weapon"],"wt":[]}},"Ferropotent":{"2":{"n":"Rapid Repair","w":1.3,"t":["heal","orb","resist"],"wt":[]},"4":{"n":"Built From Scratch","w":1.0,"t":["weapon"],"wt":[]}},"Techsec":{"4":{"n":"Concussive Rounds","w":1.3,"t":[],"wt":[]},"2":{"n":"Wrecker","w":1.0,"t":[],"wt":[]}},"Twofold Crown":{"2":{"n":"Crook and Flail","w":1.3,"t":["heal"],"wt":[]},"4":{"n":"Gift of Sight","w":0.3,"t":["weapon"],"wt":[]}},"Last Discipline":{"4":{"n":"Power Loader","w":1.3,"t":["orb"],"wt":[]},"2":{"n":"Terminal Velocity","w":0.65,"t":["weapon"],"wt":[]}},"Thunderhead":{"2":{"n":"License to Thrill","w":1.3,"t":["grenade","melee","resist"],"wt":[]},"4":{"n":"Lethal Weave","w":1.0,"t":["grenade","unravel"],"wt":[]}},"Disaster Corps":{"2":{"n":"Pleas Heard","w":1.3,"t":["heal","weapon"],"wt":["Auto Rifle","Scout Rifle","Sidearm"]},"4":{"n":"Magnificent Duty","w":0.65,"t":["heal","weapon"],"wt":["Auto Rifle","Scout Rifle","Sidearm"]}},"Bushido":{"2":{"n":"Iaido","w":1.3,"t":["heal","weapon"],"wt":[]},"4":{"n":"Unfaltering Focus","w":1.0,"t":["resist"],"wt":["Combat Bow","Shotgun","Sword"]}},"Collective Psyche":{"4":{"n":"Doppler Effect","w":1.0,"t":["heal","radiant","sever","suspend","unravel"],"wt":[]},"2":{"n":"Accretion","w":0.65,"t":[],"wt":[]}},"AION Renewal":{"4":{"n":"Reactive Booster","w":1.0,"t":["freeze","slow","suspend"],"wt":[]},"2":{"n":"Force Converter","w":1.0,"t":[],"wt":["Grenade Launcher","Rocket Launcher"]}},"Seventh Seraph":{"4":{"n":"Rasputin's Reprisal","w":1.0,"t":["heal","tangle"],"wt":[]},"2":{"n":"Rasputin's Wrath","w":0.8,"t":["grenade"],"wt":[]}},"Dark Age":{"4":{"n":"Healing Initiative","w":1.0,"t":["class","heal"],"wt":[]},"2":{"n":"Taking Initiative","w":0.65,"t":["melee","weapon"],"wt":["Glaive","Sword"]}},"Apostate's Blade":{"2":{"n":"Regenerative Threshold","w":1.0,"t":["heal","melee"],"wt":[]},"4":{"n":"Melee Conduction","w":1.0,"t":["heal","melee","radiant","scorch"],"wt":[]}},"Dreambane":{"4":{"n":"Nightmarish Resilience","w":1.0,"t":["heal","weapon"],"wt":[]},"2":{"n":"Nightmarish Power","w":0.65,"t":["grenade","melee"],"wt":[]}},"Flain":{"4":{"n":"Knit Together","w":1.0,"t":["heal","threadling"],"wt":[]},"2":{"n":"Sinew Stitching","w":1.0,"t":["heal","threadling"],"wt":[]}},"Lustrous":{"4":{"n":"Cauterize","w":1.0,"t":["heal"],"wt":[]},"2":{"n":"Photogalvanic","w":0.65,"t":["heal","weapon"],"wt":[]}},"Luminopotent":{"4":{"n":"Shock and Clear","w":1.0,"t":["ionic","jolt"],"wt":[]},"2":{"n":"Ionic Overclock","w":0.65,"t":["amplified","weapon"],"wt":["Fusion Rifle","Linear Fusion Rifle"]}},"Veritas":{"2":{"n":"Lucent Transmutation","w":1.0,"t":["breach","firesprite","melee"],"wt":[]},"4":{"n":"Lucent Tithes","w":1.0,"t":["heal","melee","overshield"],"wt":[]}},"Taken King":{"4":{"n":"Lucent Swarm","w":1.0,"t":["orb"],"wt":[]},"2":{"n":"The Ceremony","w":0.65,"t":["melee","super"],"wt":[]}},"Cyberserpent Null":{"4":{"n":"Bountiful Munitions","w":1.0,"t":[],"wt":[]},"2":{"n":"Adrenal Rush","w":0.65,"t":["weapon"],"wt":[]}},"Resonant Fury":{"4":{"n":"Siphoning Touch","w":1.0,"t":["heal","melee","weapon"],"wt":["Glaive"]},"2":{"n":"Resonant Plating","w":0.8,"t":["heal","melee"],"wt":[]}},"Eutechnology":{"2":{"n":"Gift of the Ley Lines","w":1.0,"t":["breach"],"wt":[]},"4":{"n":"Techeun's Foresight","w":0.8,"t":["breach"],"wt":[]}},"Triumphal Anthem":{"2":{"n":"Scoot to Loot","w":1.0,"t":["weapon"],"wt":[]},"4":{"n":"Shoot to Scoot","w":0.8,"t":["resist","weapon"],"wt":[]}},"Uncaged Deviants":{"4":{"n":"Superluminal Motion","w":1.0,"t":["heal","super"],"wt":[]},"2":{"n":"Special Relativity","w":0.65,"t":[],"wt":[]}},"Spacewalk":{"4":{"n":"Augmented Explosives","w":0.8,"t":["grenade"],"wt":[]},"2":{"n":"Augmented Armaments","w":0.8,"t":["weapon"],"wt":[]}},"Circuit":{"2":{"n":"Revving Up","w":0.8,"t":["heal"],"wt":[]},"4":{"n":"Dielectric Drift","w":0.8,"t":["jolt"],"wt":[]}},"Wildwood":{"2":{"n":"Watchtower","w":0.8,"t":["resist","weapon"],"wt":[]},"4":{"n":"Field Expertise","w":0.8,"t":["weapon"],"wt":[]}},"Kentarch 3":{"4":{"n":"Network Upload","w":0.8,"t":["melee","weapon"],"wt":[]},"2":{"n":"Network Admin","w":0.65,"t":["heal","weapon"],"wt":[]}},"First Ascent":{"2":{"n":"Stack 'Em Up","w":0.8,"t":["transcend"],"wt":[]},"4":{"n":"Burn 'Em Down","w":0.65,"t":["grenade","transcend"],"wt":[]}},"Thriving Survivor":{"4":{"n":"Room Clearing","w":0.8,"t":["grenade","weapon"],"wt":[]},"2":{"n":"Opening Act","w":0.65,"t":["grenade","weapon"],"wt":[]}},"Wild Anthem":{"2":{"n":"Fanfare","w":0.65,"t":["weapon"],"wt":[]},"4":{"n":"SUROS Harmony","w":0.3,"t":["weapon"],"wt":[]}},"Shrewd Survivor":{"4":{"n":"Hotshot","w":0.3,"t":["weapon"],"wt":[]},"2":{"n":"Reflex Action","w":0.3,"t":["weapon"],"wt":["Hand Cannon","Submachine Gun"]}},"Per Audacia":{"2":{"n":"Primary Chain","w":0.3,"t":["weapon"],"wt":[]},"4":{"n":"Sublime Transit","w":0.3,"t":[],"wt":[]}},"Cruel Electrum":{"2":{"n":"Primary Survivor","w":0.3,"t":["weapon"],"wt":[]},"4":{"n":"Primary Phantom","w":0.3,"t":["weapon"],"wt":[]}},"New Demotic":{"4":{"n":"Martingale","w":0.3,"t":["weapon"],"wt":[]},"2":{"n":"Paroli","w":0.3,"t":[],"wt":[]}}};
+// How often a roll aims for each outcome: nothing, one 2-piece, two 2-pieces, one 4-piece.
+const SET_ODDS = [[0, 0.45], [1, 0.40], [2, 0.10], [4, 0.05]];
+const SET_BY_NORM = Object.fromEntries(Object.entries(SET_BONUSES).map(([k, v]) => [norm(k), v]));
+
+/* Set name for each legendary armor piece (id -> name, "" if none). */
+async function armorSetNames(items) {
+  const anySet = Object.values(state.defs || {}).some(d => d.itemType === ITEMTYPE_ARMOR && d.set);
+  if (!anySet) await fetchEntities("is", items.map(i => i.hash), d => d.equippingBlock?.equipableItemSetHash || 0);
+  const setHash = i => i.def.set || entCache.data["is" + i.hash] || 0;
+  await fetchEntities("eis", items.map(setHash), d => d.displayProperties?.name || "", "DestinyEquipableItemSetDefinition");
+  return Object.fromEntries(items.map(i => [i.id, entCache.data["eis" + setHash(i)] || ""]));
+}
+
+function setBonusWeight(setName, pcs, ctx) {
+  const b = SET_BY_NORM[norm(setName)]?.[pcs];
+  if (!b) return 1;
+  let score = Math.min(b.t.reduce((sum, t) => sum + (ctx.tags.has(t) ? (BUILD_WEIGHTS.tagw[t] || 1) : 0), 0), 6);
+  if (b.wt.some(t => ctx.wtypes.has(norm(t)))) score += 3;
+  return b.w * Math.min(1 + score, 10);
+}
+
+/* After armor (and weapons) are rolled, sometimes swap legendary pieces to form set bonuses, weighted toward the build. */
+async function applySetBonus(cls) {
+  const armor = state.roll.armor;
+  if (!armor) return;
+  const target = weightedPick(SET_ODDS, o => o[1])[0];
+  if (!target) return;
+  const exo = armor.find(isExo);
+  const free = ARMOR_BUCKETS.filter(b => !armor.some(i => i.def.bucket === b && isExo(i)));
+  const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && i.def.tier === TIER_LEGENDARY);
+  const names = await armorSetNames(pool);
+  const bySet = {};
+  for (const i of pool) {
+    const n = names[i.id];
+    if (!n || !free.includes(i.def.bucket)) continue;
+    ((bySet[n] ||= {})[i.def.bucket] ||= []).push(i);
+  }
+  const sub = buildTags();
+  const ctx = {
+    tags: new Set([...buildContext(exo?.def.name).tags, ...(sub || [])]),
+    wtypes: new Set((state.roll.weapons || []).map(w => norm(w.def.typeName || ""))),
+  };
+  const covered = (n, avail) => avail.filter(b => bySet[n][b]);
+  const choose = (need, avail, exclude, pcsWeight) => {
+    const ok = Object.keys(bySet).filter(n => !exclude.includes(n) && covered(n, avail).length >= need);
+    if (!ok.length) return null;
+    const n = weightedPick(ok, pcsWeight);
+    return { name: n, buckets: shuffle(covered(n, avail)).slice(0, need) };
+  };
+  const w2 = n => setBonusWeight(n, "2", ctx);
+  const w4 = n => setBonusWeight(n, "2", ctx) + setBonusWeight(n, "4", ctx);
+  let picks = [];
+  if (target === 4) { const c = choose(4, free, [], w4); if (c) picks = [c]; }
+  if (!picks.length) {
+    const a = choose(2, free, [], w2);
+    if (a) {
+      picks = [a];
+      if (target >= 2) {
+        const b = choose(2, free.filter(x => !a.buckets.includes(x)), [a.name], w2);
+        if (b) picks.push(b);
+      }
+    }
+  }
+  if (!picks.length) return;
+  const fa = await focusArchetypes(exo, pool, false);
+  const swap = {};
+  for (const c of picks) for (const b of c.buckets) {
+    const cands = bySet[c.name][b];
+    const good = fa ? cands.filter(fa.okArch) : [];
+    swap[b] = pickByName(good.length ? good : cands);
+  }
+  state.roll.armor = armor.map(i => swap[i.def.bucket] || i);
+  const label = c => {
+    const pcs = c.buckets.length >= 4 ? "4" : "2";
+    const bonus = SET_BY_NORM[norm(c.name)];
+    const parts = pcs === "4" ? ["2", "4"] : ["2"];
+    return `${c.name} ${pcs}-piece (${parts.map(p => bonus?.[p]?.n).filter(Boolean).join(" + ") || "unranked"})`;
+  };
+  log("Set bonus: " + picks.map(label).join("; ") + ".");
 }
 
 async function rollSubclass(cid, exoticName, chosenInfo) {
@@ -1144,8 +1260,24 @@ async function armorSocketInfo(items) {
   return infos;
 }
 
+const STAT_MODS = ["Weapons", "Class", "Grenade", "Super", "Melee"]; // Health is never picked
+const FOCUS_STAT_WEIGHT = 4;
+
+/* Items in random order, each next one drawn with probability proportional to its weight. */
+function weightedOrder(items, weight) {
+  const left = items.map(x => ({ x, w: weight(x) })), out = [];
+  while (left.length) {
+    let r = Math.random() * left.reduce((s, o) => s + o.w, 0), k = 0;
+    while (k < left.length - 1 && (r -= left[k].w) >= 0) k++;
+    out.push(left.splice(k, 1)[0].x);
+  }
+  return out;
+}
+
 async function planMods(weapons, armor) {
   const wants = wantedMods(weapons);
+  const exo = armor.find(isExo);
+  const focus = new Set((exo ? state.sheet?.[norm(exo.def.name)]?.focus || [] : []).map(norm));
   const infos = await armorSocketInfo(armor);
   return infos.map(({ item, cur, sockets }) => {
     const want = wants[item.def.bucket] || [];
@@ -1170,19 +1302,21 @@ async function planMods(weapons, armor) {
       total -= drop.cost;
       missing.push({ name: drop.name, why: `not enough energy (${cap})` });
     }
-    // Weapon stat mod in the first mod socket, with whatever energy is left.
+    // Stat mod in the first mod socket with whatever energy is left: random per piece, weighted toward the exotic's Focus, never Health.
     const first = sockets[0];
     if (first && !used.has(first.idx)) {
       const curCost = plugDef(cur[first.idx])?.e || 0;
       const budget = cap - (total - curCost);
-      for (const name of ["Weapons Mod", "Minor Weapons Mod"]) {
-        const h = first.options.find(x => norm(plugDef(x)?.n || "") === norm(name) && fits(first, x));
-        const cost = h ? (plugDef(h)?.e || 0) : Infinity;
-        if (h && cost <= budget) {
-          used.add(first.idx);
-          placed.push({ idx: first.idx, hash: h, name, prio: 99, cost });
-          total += cost - curCost;
-          break;
+      found: for (const stat of weightedOrder(STAT_MODS, st => focus.has(norm(st)) ? FOCUS_STAT_WEIGHT : 1)) {
+        for (const name of [`${stat} Mod`, `Minor ${stat} Mod`]) {
+          const h = first.options.find(x => norm(plugDef(x)?.n || "") === norm(name) && fits(first, x));
+          const cost = h ? (plugDef(h)?.e || 0) : Infinity;
+          if (h && cost <= budget) {
+            used.add(first.idx);
+            placed.push({ idx: first.idx, hash: h, name, prio: 99, cost });
+            total += cost - curCost;
+            break found;
+          }
         }
       }
     }
@@ -1526,52 +1660,134 @@ function verifySubclass(r) {
   for (const h of [...r.aspects, ...r.fragments]) if (!curSet.has(h)) problems.push(`${plugName(h)}${why(h)}`);
   if (problems.length) log("Subclass — not applied: " + problems.join("; "));
   else log(`Subclass applied: ${r.info.s.def.name}.`);
+  return problems;
+}
+
+/* ---------- apply notification (modelled on DIM's loadout notification) ---------- */
+function makeToast(title) {
+  let wrap = document.querySelector(".toast-wrap");
+  if (!wrap) { wrap = document.createElement("div"); wrap.className = "toast-wrap"; document.body.append(wrap); }
+  const el = document.createElement("div"); el.className = "toast";
+  const head = document.createElement("div"); head.className = "toast-head";
+  const t = document.createElement("b"); t.textContent = title;
+  const x = document.createElement("button"); x.className = "toast-x"; x.textContent = "×"; x.title = "Dismiss"; x.onclick = () => el.remove();
+  head.append(t, x);
+  const phase = document.createElement("div"); phase.className = "toast-phase muted";
+  const rows = document.createElement("div");
+  const msgs = document.createElement("div");
+  el.append(head, phase, rows, msgs);
+  wrap.append(el);
+  const imgs = {};
+  return {
+    phase(text) { phase.textContent = text; },
+    icons(list) {
+      const row = document.createElement("div"); row.className = "toast-icons";
+      for (const it of list) {
+        const img = document.createElement("img");
+        img.src = it.icon ? BUNGIE + it.icon : ""; img.alt = ""; img.title = it.name; img.className = "pending";
+        imgs[it.key] = img; row.append(img);
+      }
+      if (list.length) rows.append(row);
+    },
+    mark(key, ok) { const img = imgs[key]; if (img) img.className = ok ? "" : "fail"; },
+    note(text, kind) { const d = document.createElement("div"); d.className = "toast-msg " + (kind || ""); d.textContent = text; msgs.append(d); },
+    done(problems) {
+      if (problems.length) {
+        el.classList.add("bad"); t.textContent = title.replace(/…$/, "") + " — finished with problems";
+        phase.textContent = "Failed";
+        const locked = problems.some(p => /AtThisLocation|CannotPerformAction/i.test(p));
+        if (locked) this.note("The game won't change gear here. Go to orbit or a social space and equip again.", "warn");
+        this.note(`${problems.length} problem${problems.length === 1 ? "" : "s"}: ` + problems.join("; "), "err");
+      } else {
+        el.classList.add("ok"); t.textContent = title.replace(/…$/, "") + " — applied";
+        phase.textContent = "Succeeded";
+        setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 450); }, 6000);
+      }
+    },
+  };
 }
 
 async function equipRoll() {
   const cid = selectedChar();
   const cls = selectedClass();
-  let subApplied = false;
-  if (state.roll.subclass) {
-    if (state.roll.subclass.charId === cid) {
-      try { await applySubclass(state.roll.subclass); subApplied = true; } catch (e) { log("Subclass error: " + e.message); }
-    } else log("Subclass roll is for a different character; skipping subclass.");
-  }
+  const toast = makeToast(`Applying to ${CLASS_NAME[cls]}…`);
+  const problems = [];
+  const sub = state.roll.subclass && state.roll.subclass.charId === cid ? state.roll.subclass : null;
+  if (state.roll.subclass && !sub) log("Subclass roll is for a different character; skipping subclass.");
   const weapons = state.roll.weapons || [];
   let armor = state.roll.armor || [];
   if (armor.length && state.roll.armorClass !== cls) {
     log("Armor roll is for a different class; skipping armor.");
     armor = [];
   }
-  for (const v of weapons.filter(i => i.virtual)) log(`${v.def.name} isn't in your inventory — pull it from Collections, then equip it.`);
+  const virtual = weapons.filter(i => i.virtual);
   const roll = [...weapons, ...armor].filter(i => !i.virtual);
-  if (roll.length) {
-    const protectedIds = new Set(roll.map(i => i.id));
-    for (const it of roll) {
-      if (it.owner === cid) continue;
-      if (it.equipped) await dequip(it, protectedIds);
-      if (it.owner !== VAULT) { log(`${it.def.name} → vault`); await transfer(it, true, it.owner); }
-      await makeRoom(cid, it.def.bucket, protectedIds);
-      log(`${it.def.name} → ${CLASS_NAME[cls]}`);
-      await transfer(it, false, cid);
+  toast.icons([
+    ...(sub ? [{ key: "subclass", icon: sub.info.s.def.icon, name: sub.info.s.def.name }] : []),
+    ...roll.map(i => ({ key: i.id, icon: i.def.icon, name: i.def.name })),
+  ]);
+  const doMods = !!(state.rules.mods && state.roll.mods && state.roll.armorClass === cls);
+  if (doMods) toast.icons(state.roll.mods.flatMap(plan => plan.placed.map(pl => ({ key: "mod:" + plan.item.id + ":" + pl.idx, icon: plugDef(pl.hash)?.i, name: pl.name }))));
+  for (const v of virtual) {
+    log(`${v.def.name} isn't in your inventory — pull it from Collections, then equip it.`);
+    toast.note(`Pull ${v.def.name} from Collections, then equip it.`, "warn");
+  }
+  let subErr = null;
+  try {
+    if (sub) {
+      toast.phase("Applying subclass");
+      try { await applySubclass(sub); } catch (e) { subErr = e.message; log("Subclass error: " + e.message); }
     }
-    // Legendaries first so a currently equipped exotic is replaced before the new exotic goes on.
-    for (const group of [roll.filter(i => !isExo(i)), roll.filter(isExo)]) {
-      try { await equipSet(cid, group); } catch (e) { log("Equip request error: " + e.message); }
+    if (roll.length) {
+      toast.phase("Moving items");
+      const protectedIds = new Set(roll.map(i => i.id));
+      for (const it of roll) {
+        if (it.owner === cid) continue;
+        try {
+          if (it.equipped) await dequip(it, protectedIds);
+          if (it.owner !== VAULT) { log(`${it.def.name} → vault`); await transfer(it, true, it.owner); }
+          await makeRoom(cid, it.def.bucket, protectedIds);
+          log(`${it.def.name} → ${CLASS_NAME[cls]}`);
+          await transfer(it, false, cid);
+        } catch (e) { problems.push(`${it.def.name}: ${e.message}`); toast.mark(it.id, false); }
+      }
+      toast.phase("Equipping items");
+      // Legendaries first so a currently equipped exotic is replaced before the new exotic goes on.
+      for (const group of [roll.filter(i => !isExo(i)), roll.filter(isExo)]) {
+        try { await equipSet(cid, group); } catch (e) { problems.push("Equip: " + e.message); }
+      }
+    }
+    toast.phase("Checking");
+    await loadProfile();
+    const byId = new Map(state.items.map(i => [i.id, i]));
+    for (const i of roll) {
+      const f = byId.get(i.id);
+      const ok = !!(f && f.owner === cid && f.equipped);
+      toast.mark(i.id, ok);
+      if (!ok && !problems.some(p => p.startsWith(i.def.name + ":"))) problems.push(`${i.def.name} not equipped`);
+    }
+    if (roll.length && problems.length === 0) log("Weapons/armor verified.");
+    else if (problems.length) log("Not equipped: " + problems.join("; "));
+    if (sub) {
+      const sp = subErr ? [subErr] : verifySubclass(sub) || [];
+      toast.mark("subclass", !sp.length);
+      problems.push(...sp.map(p => "Subclass: " + p));
+    }
+  if (doMods) {
+    toast.phase("Applying mods");
+    try { await applyMods(state.roll.mods, cid); } catch (e) { problems.push("Mods: " + e.message); }
+    for (const plan of state.roll.mods) for (const pl of plan.placed) {
+      const ok = (plan.cur || [])[pl.idx] === pl.hash;
+      toast.mark("mod:" + plan.item.id + ":" + pl.idx, ok);
+      if (!ok) problems.push(`${pl.name} on ${plan.item.def.name}`);
     }
   }
-  await loadProfile();
-  const byId = new Map(state.items.map(i => [i.id, i]));
-  const failed = roll.filter(i => { const f = byId.get(i.id); return !f || f.owner !== cid || !f.equipped; });
-  if (failed.length) log("Not equipped: " + failed.map(i => i.def.name).join(", "));
-  else if (roll.length) log("Weapons/armor verified.");
-  if (subApplied) verifySubclass(state.roll.subclass);
-  if (state.rules.mods && state.roll.mods && state.roll.armorClass === cls) {
-    log("Applying mods…");
-    try { await applyMods(state.roll.mods, cid); } catch (e) { log("Mods error: " + e.message); }
+    state.roll.weapons = state.roll.weapons?.map(i => byId.get(i.id) || i) || null;
+    state.roll.armor = state.roll.armor?.map(i => byId.get(i.id) || i) || null;
+  } catch (e) {
+    problems.push(e.message);
   }
-  state.roll.weapons = state.roll.weapons?.map(i => byId.get(i.id) || i) || null;
-  state.roll.armor = state.roll.armor?.map(i => byId.get(i.id) || i) || null;
+  toast.done(problems);
   renderRoll();
 }
 
@@ -1610,7 +1826,7 @@ async function pickSubclassAndExotic(cid, cls) {
 }
 
 async function rerollOne(bucket) {
-  state.roll.weapons = rerollWeaponSlot(state.rules, 0, bucket);
+  state.roll.weapons = rerollWeaponSlot(state.rules, await weaponElement(selectedChar()), bucket);
   if (state.rules.mods && state.roll.armor) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
     catch (e) { log("Couldn't plan mods: " + e.message); }
@@ -1655,8 +1871,17 @@ async function doRoll({ subclass, weapons, armor }) {
     const exo = state.roll.armorClass === cls ? (state.roll.armor || []).find(isExo) : null;
     state.roll.subclass = await rollSubclass(cid, exo?.def.name);
   }
-  if (weapons) state.roll.weapons = rollWeapons(rules, 0);
-  else if (armor || subclass) ensureWeaponNeed(rules);
+  const E = await weaponElement(cid);
+  if (E && (weapons || state.roll.weapons)) log(`Monochromatic: ${DMG_NAME[E]}.`);
+  if (!weapons && E && state.roll.weapons && !state.roll.weapons.every(i => elementOK(i.def.bucket, i.dmg, E))) {
+    log("Weapons don't match the new subclass element; rerolling weapons.");
+    weapons = true;
+  }
+  if (weapons) state.roll.weapons = rollWeapons(rules, E);
+  else if (armor || subclass) ensureWeaponNeed(rules, E);
+  if (armor) {
+    try { await applySetBonus(cls); } catch (e) { log("Couldn't apply set bonus weighting: " + e.message); }
+  }
   state.roll.mods = null;
   if (rules.mods && state.roll.weapons && state.roll.armor) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
@@ -1687,10 +1912,13 @@ function wire() {
     try { await navigator.clipboard.writeText(v); log("DIM search copied."); }
     catch { $("dimString").select(); log("Clipboard blocked; text selected for manual copy."); }
   };
+  if (state.rules.noDoubleSpecial && state.rules.guaranteedDoubleSpecial) state.rules.guaranteedDoubleSpecial = false;
   for (const cb of document.querySelectorAll("[data-rule]")) {
     cb.checked = !!state.rules[cb.dataset.rule];
     cb.onchange = () => {
       state.rules[cb.dataset.rule] = cb.checked;
+      const other = cb.dataset.excl && document.querySelector(`[data-rule="${cb.dataset.excl}"]`);
+      if (other && cb.checked) { other.checked = false; state.rules[cb.dataset.excl] = false; }
       store.set("d2b_rules", state.rules);
       if (state.defs) renderExoticList("w");
     };
