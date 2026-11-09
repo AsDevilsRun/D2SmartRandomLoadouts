@@ -37,6 +37,8 @@
   .checklist label.unowned { color:var(--dim); }
   .checklist label.owned { color:var(--text); }
   summary { cursor:pointer; }
+  .note { margin-top:8px; padding:8px 10px; border:1px solid var(--accent); border-radius:6px; color:var(--accent); }
+  td.icons img { width:28px; height:28px; display:inline-block; vertical-align:middle; margin-right:6px; }
   code { background:var(--bg); padding:1px 5px; border-radius:4px; }
 </style>
 </head>
@@ -75,12 +77,13 @@
         <label><input type="checkbox" data-rule="guaranteedExoticWeapon"> Guaranteed exotic weapon</label>
         <label><input type="checkbox" data-rule="guaranteedExoticArmor"> Guaranteed exotic armor</label>
         <label><input type="checkbox" data-rule="mono"> Monochromatic</label>
+        <label><input type="checkbox" data-rule="unownedExotics"> Include unowned exotic weapons (pull from Collections)</label>
       </div>
     </div>
 
     <div class="grid">
       <div class="card"><h2>Subclass</h2><table id="subclassTable"></table></div>
-      <div class="card"><h2>Weapons</h2><table id="weaponTable"></table></div>
+      <div class="card"><h2>Weapons</h2><table id="weaponTable"></table><div id="weaponNote" class="note" hidden></div></div>
       <div class="card"><h2>Armor</h2><table id="armorTable"></table></div>
     </div>
 
@@ -162,7 +165,7 @@ const ITEMTYPE_ARMOR = 2, ITEMTYPE_WEAPON = 3, ITEMTYPE_SUBCLASS = 16;
 const VAULT = "vault";
 const VAULT_BUCKET = 138197802;
 const CHAR_BUCKET_CAPACITY = 9;
-const DEFAULT_RULES = { subclass: true, noDoublePrimary: true, noDoubleSpecial: true, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mono: false };
+const DEFAULT_RULES = { unownedExotics: false, subclass: true, noDoublePrimary: true, noDoubleSpecial: true, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mono: false };
 
 /* ---------- utilities ---------- */
 const $ = id => document.getElementById(id);
@@ -301,6 +304,8 @@ function slimDefs(raw) {
       ammo: d.equippingBlock?.ammoType || 0,
       classType: d.classType,
       typeName: d.itemTypeDisplayName || "",
+      dmg: d.defaultDamageType || 0,
+      coll: d.collectibleHash || 0,
     };
   }
   return { out, plugs };
@@ -551,11 +556,27 @@ function elementOK(bucket, dmg, E) {
   return true;
 }
 
+/* Exotic weapons not in the inventory, as placeholder items to be pulled from Collections. */
+function unownedExoticWeapons(off) {
+  const owned = new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && isExo(i)).map(i => i.def.name));
+  const byName = {};
+  for (const [h, d] of Object.entries(state.defs)) {
+    if (d.itemType !== ITEMTYPE_WEAPON || d.tier !== TIER_EXOTIC || !d.ammo || !WEAPON_BUCKETS.includes(d.bucket)) continue;
+    if (!d.name || d.name === "?" || /classified/i.test(d.name) || owned.has(d.name) || off.has(d.name)) continue;
+    const prev = byName[d.name];
+    if (!prev || (!prev.def.coll && d.coll)) {
+      byName[d.name] = { id: null, hash: Number(h), def: d, owner: "collections", equipped: false, power: 0, dmg: d.dmg, virtual: true };
+    }
+  }
+  return Object.values(byName);
+}
+
 function rollWeapons(rules, E) {
   const off = exoticOff("w");
   const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && i.def.ammo
     && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name)))
     && elementOK(i.def.bucket, i.dmg, E));
+  if (rules.unownedExotics) pool.push(...unownedExoticWeapons(off).filter(v => elementOK(v.def.bucket, v.dmg, E)));
   if (rules.guaranteedExoticWeapon && !pool.some(isExo)) {
     throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
   }
@@ -622,6 +643,7 @@ async function rollSubclass(cid) {
 
 /* ---------- rendering ---------- */
 function locationLabel(i) {
+  if (i.virtual) return "Collections — pull it";
   if (i.owner === VAULT) return "Vault";
   const c = state.characters[i.owner];
   const who = c ? CLASS_NAME[c.classType] : "Character";
@@ -646,6 +668,16 @@ function itemRow(i, sub) {
   return tr;
 }
 
+function iconRow(label, icon, value) {
+  const tr = document.createElement("tr");
+  const a = document.createElement("td"); a.className = "label"; a.textContent = label;
+  const b = document.createElement("td"); b.className = "icons";
+  if (icon) { const img = document.createElement("img"); img.src = BUNGIE + icon; img.alt = ""; b.append(img); }
+  b.append(document.createTextNode(value));
+  tr.append(a, b);
+  return tr;
+}
+
 function labelRow(label, value) {
   const tr = document.createElement("tr");
   const a = document.createElement("td"); a.className = "label"; a.textContent = label;
@@ -663,13 +695,19 @@ function renderRoll() {
   const r = state.roll.subclass;
   if (r) {
     const el = r.info.element === "prism" ? `Prismatic (${DMG_NAME[r.element] || "?"} super)` : DMG_NAME[r.element] || "";
-    st.append(labelRow("Subclass", `${r.info.s.def.name} — ${el}`));
-    for (const a of r.abilities) st.append(labelRow(PLUG_LABEL[a.kind], plugName(a.hash)));
-    st.append(labelRow("Aspects", r.aspects.map(plugName).join(", ") || "—"));
-    st.append(labelRow("Fragments", r.fragments.map(plugName).join(", ") || "—"));
+    st.append(iconRow("Subclass", r.info.s.def.icon, `${r.info.s.def.name} — ${el}`));
+    for (const a of r.abilities) st.append(iconRow(PLUG_LABEL[a.kind] || "Ability", plugDef(a.hash)?.i, plugName(a.hash)));
+    if (!r.aspects.length) st.append(iconRow("Aspects", "", "—"));
+    for (const h of r.aspects) st.append(iconRow("Aspect", plugDef(h)?.i, plugName(h)));
+    if (!r.fragments.length) st.append(iconRow("Fragments", "", "—"));
+    for (const h of r.fragments) st.append(iconRow("Fragment", plugDef(h)?.i, plugName(h)));
   }
+  const pulls = (state.roll.weapons || []).filter(i => i.virtual);
+  const note = $("weaponNote");
+  note.hidden = !pulls.length;
+  note.textContent = pulls.length ? `Pull ${pulls.map(i => i.def.name).join(", ")} from Collections, then equip it — the API can't pull from Collections.` : "";
   const all = [...(state.roll.weapons || []), ...(state.roll.armor || [])];
-  $("dimString").value = all.map(i => "id:" + i.id).join(" or ");
+  $("dimString").value = all.map(i => i.virtual ? `exactname:"${i.def.name}"` : "id:" + i.id).join(" or ");
   $("btnEquip").disabled = !(all.length || r);
 }
 
@@ -704,7 +742,7 @@ function renderExoticList(list) {
     lab.append(cb, " " + name);
     box.append(lab);
     if (h) ownedCount++;
-    if (h && !off.has(name)) eligible++;
+    if ((h || (isW && state.rules.unownedExotics)) && !off.has(name)) eligible++;
   }
   box.dataset.names = JSON.stringify(names);
   box.dataset.owned = JSON.stringify([...owned]);
@@ -807,27 +845,36 @@ async function applySubclass(r) {
   const item = info.s;
   r.errors = {};
   const current = state.items.find(i => i.id === item.id);
-  if (!(current ? current.equipped : item.equipped)) {
+  r.subclassEquipped = !!(current ? current.equipped : item.equipped);
+  if (!r.subclassEquipped) {
     log(`Equipping ${item.def.name}.`);
     try {
       await bungie("/Destiny2/Actions/Items/EquipItem/", { method: "POST", body: { itemId: item.id, characterId: charId, membershipType: m.type } });
+      r.subclassEquipped = true;
     } catch (e) { r.errors.subclass = e.message; }
     await sleep(200);
   }
+  // Profile reads can be cached and stale right after changes, so track socket state from each
+  // insert's own response (as DIM does) instead of re-reading the profile.
   const cur = info.cur.slice();
   const insert = async (idx, hash) => {
     if (!hash || cur[idx] === hash) return;
     try {
-      await bungie("/Destiny2/Actions/Items/InsertSocketPlugFree/", {
+      const res = await bungie("/Destiny2/Actions/Items/InsertSocketPlugFree/", {
         method: "POST",
         body: { plug: { socketIndex: idx, socketArrayType: 0, plugItemHash: hash }, itemId: item.id, characterId: charId, membershipType: m.type },
       });
+      const sockets = res?.item?.sockets?.data?.sockets;
+      if (sockets) sockets.forEach((sk, i) => { cur[i] = sk.plugHash || 0; });
+      else cur[idx] = hash;
+      delete r.errors[hash];
     } catch (e) {
-      r.errors[hash] = e.message; // only reported if verification shows it didn't apply
+      if (/SocketAlreadyHasPlug/i.test(e.message)) cur[idx] = hash; // already there: success
+      else r.errors[hash] = e.message;
     }
-    cur[idx] = hash;
-    await sleep(250);
+    await sleep(500);
   };
+  r.finalCur = cur;
   const placeGroup = async (idxs, targets) => {
     const want = new Set(targets), kept = new Set(), free = [];
     for (const idx of idxs) {
@@ -849,17 +896,16 @@ async function applySubclass(r) {
   await placeGroup(fIdx.slice(0, r.fragments.length), r.fragments);
 }
 
-async function verifySubclass(r) {
-  const info = await freshSubclassInfo(r.charId, r.info.s.id);
-  if (!info) { log("Couldn't re-read the subclass to verify it."); return; }
+function verifySubclass(r) {
+  const cur = r.finalCur || [];
   const problems = [];
-  if (!info.s.equipped) problems.push(`${info.s.def.name} not equipped${r.errors?.subclass ? ` (${r.errors.subclass})` : ""}`);
-  const curSet = new Set(info.cur);
+  if (!r.subclassEquipped) problems.push(`${r.info.s.def.name} not equipped${r.errors?.subclass ? ` (${r.errors.subclass})` : ""}`);
+  const curSet = new Set(cur);
   const why = h => (r.errors?.[h] ? ` (${r.errors[h]})` : "");
-  for (const a of r.abilities) if (info.cur[a.idx] !== a.hash) problems.push(`${plugName(a.hash)}${why(a.hash)}`);
+  for (const a of r.abilities) if (cur[a.idx] !== a.hash) problems.push(`${plugName(a.hash)}${why(a.hash)}`);
   for (const h of [...r.aspects, ...r.fragments]) if (!curSet.has(h)) problems.push(`${plugName(h)}${why(h)}`);
   if (problems.length) log("Subclass — not applied: " + problems.join("; "));
-  else log(`Subclass verified: ${info.s.def.name}.`);
+  else log(`Subclass applied: ${r.info.s.def.name}.`);
 }
 
 async function equipRoll() {
@@ -877,7 +923,8 @@ async function equipRoll() {
     log("Armor roll is for a different class; skipping armor.");
     armor = [];
   }
-  const roll = [...weapons, ...armor];
+  for (const v of weapons.filter(i => i.virtual)) log(`${v.def.name} isn't in your inventory — pull it from Collections, then equip it.`);
+  const roll = [...weapons, ...armor].filter(i => !i.virtual);
   if (roll.length) {
     const protectedIds = new Set(roll.map(i => i.id));
     for (const it of roll) {
@@ -898,7 +945,7 @@ async function equipRoll() {
   const failed = roll.filter(i => { const f = byId.get(i.id); return !f || f.owner !== cid || !f.equipped; });
   if (failed.length) log("Not equipped: " + failed.map(i => i.def.name).join(", "));
   else if (roll.length) log("Weapons/armor verified.");
-  if (subApplied) await verifySubclass(state.roll.subclass);
+  if (subApplied) verifySubclass(state.roll.subclass);
   state.roll.weapons = state.roll.weapons?.map(i => byId.get(i.id) || i) || null;
   state.roll.armor = state.roll.armor?.map(i => byId.get(i.id) || i) || null;
   renderRoll();
@@ -960,7 +1007,11 @@ function wire() {
   };
   for (const cb of document.querySelectorAll("[data-rule]")) {
     cb.checked = !!state.rules[cb.dataset.rule];
-    cb.onchange = () => { state.rules[cb.dataset.rule] = cb.checked; store.set("d2r_rules", state.rules); };
+    cb.onchange = () => {
+      state.rules[cb.dataset.rule] = cb.checked;
+      store.set("d2r_rules", state.rules);
+      if (state.defs) renderExoticList("w");
+    };
   }
   for (const b of document.querySelectorAll("[data-list]")) b.onclick = () => setExoticList(b.dataset.list, b.dataset.set);
 }
