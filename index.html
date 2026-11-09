@@ -440,33 +440,30 @@ async function getSubclassInfo(cid) {
   await fetchEntities("ps", defsList.flatMap(d => d.e.map(e => e.r)), d => (d.reusablePlugItems || []).map(p => p.plugItemHash), "DestinyPlugSetDefinition");
 
   const sd = state.socketData;
-  // Plug-set entries Bungie reports as visible for any character (unlock flags are unreliable per character).
-  const seen = setHash => {
-    const out = new Set();
-    const addAll = list => { for (const p of list || []) if (p.enabled || p.canInsert) out.add(p.plugItemHash); };
-    addAll(sd.profilePlugs[setHash]);
-    for (const c of Object.values(sd.charPlugs)) addAll(c?.plugs?.[setHash]);
-    return out;
-  };
-
-  const raw = subs.map(s => {
+  // Like DIM: use each socket's full definition list. Bungie's per-character unlock flags are unreliable
+  // (Bungie-net/api#1572), so locked picks are possible and get reported after equipping.
+  const pre = subs.map(s => {
     const def = entCache.data["s" + s.hash];
     if (!def) return null;
-    const cur = (sd.sockets[s.id]?.sockets || []).map(x => x.plugHash || 0);
     const reus = sd.reusable[s.id]?.plugs || {};
+    const defined = def.e.map((e, idx) => [...new Set([...(entCache.data["ps" + e.r] || []), ...e.ri, ...(reus[idx] || []).map(p => p.plugItemHash)])]);
+    return { s, def, defined };
+  }).filter(Boolean);
+  await fetchEntities("p", pre.flatMap(x => [...x.defined.flat(), ...x.def.e.map(e => e.i)]), slimPlug);
+
+  const raw = pre.map(({ s, def, defined }) => {
+    const cur = (sd.sockets[s.id]?.sockets || []).map(x => x.plugHash || 0);
     const avail = {};
     def.e.forEach((e, idx) => {
-      const defined = [...new Set([...(entCache.data["ps" + e.r] || []), ...e.ri, ...(reus[idx] || []).map(p => p.plugItemHash)])];
-      const vis = e.r ? seen(e.r) : new Set();
-      let list = defined.filter(h => vis.has(h));
-      if (!list.length) list = defined;
+      let list = defined[idx];
+      list = list.slice();
       if (cur[idx] && !list.includes(cur[idx])) list.push(cur[idx]);
       avail[idx] = list;
     });
     return { s, def, cur, avail };
-  }).filter(Boolean);
+  });
 
-  const allPlugs = raw.flatMap(x => [...Object.values(x.avail).flat(), ...x.def.e.map(e => e.i)]);
+  const allPlugs = raw.flatMap(x => Object.values(x.avail).flat());
   await fetchEntities("p", allPlugs, slimPlug);
 
   const infos = raw.map(x => {
@@ -486,11 +483,26 @@ async function getSubclassInfo(cid) {
     state.subLogged = state.subLogged || {};
     state.subLogged[cid] = true;
     log(`Subclasses on ${CLASS_NAME[state.characters[cid]?.classType] || "character"}: ` + infos.map(i =>
-      `${i.s.def.name} [super ${i.groups.supers.length}, abilities ${i.groups.abilities.length}, aspects ${i.groups.aspects.length}, fragments ${i.groups.fragments.length}; options ${Object.values(i.avail).reduce((a, l) => a + l.length, 0)}]`
+      `${i.s.def.name} [` + ["supers", "abilities", "aspects", "fragments"].map(g => {
+        const opts = new Set(i.groups[g].flatMap(idx => i.choices(idx))).size;
+        return `${g}: ${i.groups[g].length} slot${i.groups[g].length === 1 ? "" : "s"}/${opts} options`;
+      }).join(", ") + "]"
     ).join(" | "));
   }
   state.subInfo[cid] = infos;
   return infos;
+}
+
+const SUPER_ELEMENT = [
+  ["golden gun", 3], ["blade barrage", 3], ["hammer of sol", 3], ["burning maul", 3], ["daybreak", 3], ["well of radiance", 3], ["song of flame", 3],
+  ["gathering storm", 2], ["arc staff", 2], ["storm's edge", 2], ["fists of havoc", 2], ["thundercrash", 2], ["stormtrance", 2], ["chaos reach", 2],
+  ["shadowshot", 4], ["spectral blades", 4], ["sentinel shield", 4], ["ward of dawn", 4], ["twilight arsenal", 4], ["nova bomb", 4], ["nova warp", 4],
+  ["silence and squall", 6], ["glacial quake", 6], ["winter's wrath", 6],
+  ["silkstrike", 7], ["bladefury", 7], ["needlestorm", 7],
+];
+function superElementByName(superHash) {
+  const n = norm(plugName(superHash)).replace(/&/g, "and");
+  return SUPER_ELEMENT.find(([k]) => n.includes(k))?.[1] || 0;
 }
 
 function superElement(infos, superHash) {
@@ -506,8 +518,8 @@ function superElement(infos, superHash) {
 
 function resolveElement(infos, info, superHash) {
   if (info.element !== "prism") return info.element || 0;
-  const el = superElement(infos, superHash) || plugElement(superHash);
-  if (!el) log(`Couldn't determine the element of ${plugName(superHash)}; Monochromatic not applied.`);
+  const el = superElementByName(superHash) || superElement(infos, superHash) || plugElement(superHash);
+  if (!el) log(`Couldn't determine the element of "${plugName(superHash)}" (category ${plugDef(superHash)?.c || "?"}); Monochromatic not applied.`);
   return el;
 }
 
