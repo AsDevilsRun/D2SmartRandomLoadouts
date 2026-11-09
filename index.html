@@ -42,6 +42,9 @@
   td.icons img { width:28px; height:28px; display:inline-block; vertical-align:middle; margin-right:6px; }
   .navlink { font-size:13px; font-weight:400; color:var(--dim); margin-left:12px; text-decoration:none; }
   .navlink:hover { color:var(--accent); }
+  h2.boxhead { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  h2.boxhead button { text-transform:none; letter-spacing:0; }
+  td.act { width:1%; white-space:nowrap; text-align:right; }
   code { background:var(--bg); padding:1px 5px; border-radius:4px; }
 </style>
 </head>
@@ -64,9 +67,6 @@
     <div class="controls">
       <label>Character <select id="charSelect"></select></label>
       <button id="btnRollAll" class="primary">Roll all</button>
-      <button id="btnRollSubclass">Roll subclass</button>
-      <button id="btnRollWeapons">Roll weapons</button>
-      <button id="btnRollArmor">Roll armor</button>
       <button id="btnRefresh">Refresh inventory</button>
       <button id="btnSignOut">Sign out</button>
     </div>
@@ -85,9 +85,9 @@
     </div>
 
     <div class="grid">
-      <div class="card"><h2>Subclass</h2><table id="subclassTable"></table></div>
-      <div class="card"><h2>Weapons</h2><table id="weaponTable"></table><div id="weaponNote" class="note" hidden></div></div>
-      <div class="card"><h2>Armor</h2><table id="armorTable"></table></div>
+      <div class="card"><h2 class="boxhead">Subclass <button id="btnRollSubclass" class="small">Roll subclass</button></h2><table id="subclassTable"></table></div>
+      <div class="card"><h2 class="boxhead">Weapons <button id="btnRollWeapons" class="small">Roll weapons</button></h2><table id="weaponTable"></table><div id="weaponNote" class="note" hidden></div></div>
+      <div class="card"><h2 class="boxhead">Armor <button id="btnRollArmor" class="small">Roll armor</button></h2><table id="armorTable"></table></div>
     </div>
 
     <div class="card">
@@ -223,6 +223,14 @@ async function bungie(path, { method = "GET", body } = {}) {
     throw new Error(`${json.ErrorStatus}: ${json.Message}`);
   }
   throw new Error("Bungie is throttling requests. Wait a moment and retry.");
+}
+
+/* Socket changes start at least 500 ms apart (DIM's limit); the request's own round trip counts toward the gap. */
+let lastSocketChange = 0;
+async function socketGap() {
+  const wait = lastSocketChange + 500 - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastSocketChange = Date.now();
 }
 
 async function runPool(items, n, fn) {
@@ -591,12 +599,36 @@ function unownedExoticWeapons(off) {
   return Object.values(byName);
 }
 
-function rollWeapons(rules, E) {
+function weaponPool(rules, E) {
   const off = exoticOff("w");
   const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && i.def.ammo
     && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name)))
     && elementOK(i.def.bucket, i.dmg, E));
   if (rules.unownedExotics) pool.push(...unownedExoticWeapons(off).filter(v => elementOK(v.def.bucket, v.dmg, E)));
+  return pool;
+}
+
+/* Reroll one weapon slot, keeping the other two and all weapon rules. */
+function rerollWeaponSlot(rules, E, bucket) {
+  const cur = state.roll.weapons || [];
+  const old = cur.find(i => i.def.bucket === bucket);
+  const fixed = cur.filter(i => i.def.bucket !== bucket);
+  const ammo = { 1: 0, 2: 0, 3: 0 };
+  for (const i of fixed) ammo[i.def.ammo]++;
+  const exoFixed = fixed.some(isExo);
+  let cands = weaponPool(rules, E).filter(i => i.def.bucket === bucket
+    && (!exoFixed || !isExo(i))
+    && !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1])
+    && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]));
+  if (rules.guaranteedExoticWeapon && !exoFixed) cands = cands.filter(isExo);
+  if (!cands.length) throw new Error(`No other ${SLOT_NAME[bucket]} weapon fits the rules with the other two weapons.`);
+  const fresh = cands.filter(i => !old || i.def.name !== old.def.name);
+  const p = pickByName(fresh.length ? fresh : cands);
+  return cur.map(i => i.def.bucket === bucket ? p : i);
+}
+
+function rollWeapons(rules, E) {
+  const pool = weaponPool(rules, E);
   if (rules.guaranteedExoticWeapon && !pool.some(isExo)) {
     throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
   }
@@ -671,7 +703,7 @@ function locationLabel(i) {
   return i.equipped ? `${who} (equipped)` : who;
 }
 
-function itemRow(i, sub) {
+function itemRow(i, sub, action) {
   const tr = document.createElement("tr");
   const tdIcon = document.createElement("td");
   if (i.def.icon) { const img = document.createElement("img"); img.src = BUNGIE + i.def.icon; img.alt = ""; tdIcon.append(img); }
@@ -683,8 +715,17 @@ function itemRow(i, sub) {
   s.textContent = sub;
   tdName.append(s);
   const tdLoc = document.createElement("td");
-  tdLoc.className = "muted";
-  tdLoc.textContent = locationLabel(i);
+  if (action) {
+    tdLoc.className = "act";
+    const b = document.createElement("button");
+    b.className = "small"; b.textContent = "Reroll"; b.title = "Reroll this weapon";
+    b.onclick = action;
+    b.dataset.reroll = "1";
+    tdLoc.append(b);
+  } else {
+    tdLoc.className = "muted";
+    tdLoc.textContent = locationLabel(i);
+  }
   tr.append(tdIcon, tdName, tdLoc);
   return tr;
 }
@@ -716,7 +757,7 @@ function labelRow(label, value) {
 
 function renderRoll() {
   const wt = $("weaponTable"); wt.replaceChildren();
-  for (const i of state.roll.weapons || []) wt.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${AMMO_NAME[i.def.ammo]} · ${DMG_NAME[i.dmg] || ""} ${i.def.typeName}`));
+  for (const i of state.roll.weapons || []) wt.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${AMMO_NAME[i.def.ammo]} · ${DMG_NAME[i.dmg] || ""} ${i.def.typeName}`, () => busy(() => rerollOne(i.def.bucket))));
   const at = $("armorTable"); at.replaceChildren();
   for (const i of state.roll.armor || []) at.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${i.power}`));
   const st = $("subclassTable"); st.replaceChildren();
@@ -888,6 +929,7 @@ async function applySubclass(r) {
   const insert = async (idx, hash) => {
     if (!hash || cur[idx] === hash) return;
     try {
+      await socketGap();
       const res = await bungie("/Destiny2/Actions/Items/InsertSocketPlugFree/", {
         method: "POST",
         body: { plug: { socketIndex: idx, socketArrayType: 0, plugItemHash: hash }, itemId: item.id, characterId: charId, membershipType: m.type },
@@ -900,7 +942,6 @@ async function applySubclass(r) {
       if (/SocketAlreadyHasPlug/i.test(e.message)) cur[idx] = hash; // already there: success
       else r.errors[hash] = e.message;
     }
-    await sleep(500);
   };
   r.finalCur = cur;
   const placeGroup = async (idxs, targets) => {
@@ -983,6 +1024,7 @@ async function equipRoll() {
 const BUSY_IDS = ["btnRollAll", "btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRefresh", "btnEquip", "charSelect"];
 function setBusy(b) {
   for (const id of BUSY_IDS) $(id).disabled = b;
+  for (const el of document.querySelectorAll("[data-reroll]")) el.disabled = b;
   if (!b) $("btnEquip").disabled = !((state.roll.weapons || []).length || (state.roll.armor || []).length || state.roll.subclass);
 }
 
@@ -997,6 +1039,12 @@ async function weaponElement(cid) {
   if (!state.rules.mono) return 0;
   if (state.roll.subclass && state.roll.subclass.charId === cid) return state.roll.subclass.element || 0;
   return await equippedElement(cid);
+}
+
+async function rerollOne(bucket) {
+  const E = await weaponElement(selectedChar());
+  state.roll.weapons = rerollWeaponSlot(state.rules, E, bucket);
+  renderRoll();
 }
 
 async function doRoll({ subclass, weapons, armor }) {
