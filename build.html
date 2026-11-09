@@ -648,17 +648,19 @@ function weaponPool(rules, E) {
 /* Supers that make some weapon types more likely (weighting only, never forced). */
 const SUPER_WEAPONS = { "shadowshot: moebius quiver": ["Combat Bow"] };
 const SUPER_WEAPON_BOOST = 4;
+const SOFT_WEAPON_BOOST = 4; // exotic armor rows with Force weapon = N
 let EXW_TAGS = null;
 const exwTags = name => {
   if (!EXW_TAGS) EXW_TAGS = Object.fromEntries(Object.entries(BUILD_WEIGHTS.exw || {}).map(([k, v]) => [norm(k), v]));
   return EXW_TAGS[norm(name)] || [];
 };
 
-function weaponNeed() {
+/* The exotic armor's weapons. Forced unless its sheet row has Force weapon = N; then they are only weighted (soft = true). */
+function weaponNeed(soft = false) {
   const types = [], names = [];
   const exo = state.roll.armorClass === selectedClass() ? (state.roll.armor || []).find(isExo) : null;
   const rule = exo ? exoticRule(exo.def.name) : null;
-  if (rule) { types.push(...(rule.weaponTypes || [])); names.push(...(rule.weapons || [])); }
+  if (rule && (rule.forceWeapon !== false) !== soft) { types.push(...(rule.weaponTypes || [])); names.push(...(rule.weapons || [])); }
   if (!types.length && !names.length) return null;
   return { types: types.map(norm), names: names.map(norm), label: [...types, ...names].join(" / ") };
 }
@@ -683,6 +685,8 @@ function weaponWeight(i, tags) {
   }
   const boostTypes = superWeaponTypes();
   if (boostTypes.length && meetsNeed(i, { types: boostTypes, names: [] })) w *= SUPER_WEAPON_BOOST;
+  const soft = weaponNeed(true);
+  if (soft && meetsNeed(i, soft)) w *= SOFT_WEAPON_BOOST;
   return w;
 }
 
@@ -1064,6 +1068,7 @@ async function loadSheet() {
         prism: get(r, "Prismatic OK").toUpperCase(), forceEl: get(r, "Force element ability").toUpperCase(),
         prismNeeds: splitList(get(r, "Prismatic needs")), focus: splitList(get(r, "Focus")),
         weaponTypes: splitList(get(r, "Weapon types")), weapons: splitList(get(r, "Weapons")),
+        forceWeapon: (get(r, "Force weapon") || get(r, "Force weapons")).toUpperCase() !== "N",
       };
     }
     state.sheet = sheet;
@@ -1831,7 +1836,7 @@ async function doRoll({ subclass, weapons, armor }) {
     const names = [...new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && isExo(i) && !off.has(i.def.name)).map(i => i.def.name))];
     const weaponsOK = n => {
       const r = exoticRule(n);
-      const need = (r.weaponTypes?.length || r.weapons?.length) ? { types: r.weaponTypes.map(norm), names: r.weapons.map(norm) } : null;
+      const need = r.forceWeapon !== false && (r.weaponTypes?.length || r.weapons?.length) ? { types: r.weaponTypes.map(norm), names: r.weapons.map(norm) } : null;
       return !need || !state.roll.weapons || state.roll.weapons.some(i => meetsNeed(i, need));
     };
     let exact = names.filter(n => fitsRolledSubclass(exoticRule(n), sub));
