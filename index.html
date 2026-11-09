@@ -156,7 +156,7 @@ const SUBCLASS_ELEMENT = {
   threadrunner: 7, berserker: 7, broodweaver: 7,
 };
 const PLUG_KINDS = ["supers", "class_abilities", "movement", "melee", "grenades", "aspects", "fragments"];
-const PLUG_LABEL = { supers: "Super", class_abilities: "Class ability", movement: "Movement", melee: "Melee", grenades: "Grenade", aspects: "Aspects", fragments: "Fragments" };
+const PLUG_LABEL = { ability: "Ability", supers: "Super", class_abilities: "Class ability", movement: "Movement", melee: "Melee", grenades: "Grenade", aspects: "Aspects", fragments: "Fragments" };
 const TIER_LEGENDARY = 5, TIER_EXOTIC = 6;
 const ITEMTYPE_ARMOR = 2, ITEMTYPE_WEAPON = 3, ITEMTYPE_SUBCLASS = 16;
 const VAULT = "vault";
@@ -277,7 +277,13 @@ async function loadMembership() {
 }
 
 function slimPlug(d) {
-  return { n: d.displayProperties?.name || "", c: d.plug?.plugCategoryIdentifier || "", k: d.plug?.energyCapacity?.capacityValue || 0, i: d.displayProperties?.icon || "" };
+  return {
+    n: d.displayProperties?.name || "",
+    c: d.plug?.plugCategoryIdentifier || "",
+    t: d.itemTypeDisplayName || "",
+    k: (d.investmentStats || []).find(st => st.statTypeHash === 2223994109)?.value || d.plug?.energyCapacity?.capacityValue || 0,
+    i: d.displayProperties?.icon || "",
+  };
 }
 
 function slimDefs(raw) {
@@ -320,30 +326,47 @@ async function loadDefs() {
 const entCache = {
   key: "", data: {},
   open() {
-    const key = "d2r_ent_" + state.manifestVersion;
+    const key = "d2r_ent3_" + state.manifestVersion;
     if (this.key === key) return;
     this.key = key;
     this.data = store.get(key) || {};
-    try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith("d2r_ent_") && k !== key) localStorage.removeItem(k); } } catch { /* ignore */ }
+    try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith("d2r_ent") && k !== key) localStorage.removeItem(k); } } catch { /* ignore */ }
   },
   save() { store.set(this.key, this.data); },
 };
 
-async function fetchEntities(prefix, hashes, slimFn) {
+async function fetchEntities(prefix, hashes, slimFn, type = "DestinyInventoryItemDefinition") {
   entCache.open();
   const missing = [...new Set(hashes)].filter(h => h && !((prefix + h) in entCache.data));
   if (!missing.length) return;
   log(`Looking up ${missing.length} definitions…`);
   await runPool(missing, 6, async h => {
-    const d = await bungie(`/Destiny2/Manifest/DestinyInventoryItemDefinition/${h}/`);
+    const d = await bungie(`/Destiny2/Manifest/${type}/${h}/`);
     entCache.data[prefix + h] = slimFn(d);
   });
   entCache.save();
 }
 
-const plugDef = h => state.plugDefs[h] || entCache.data["p" + h] || null;
+const plugDef = h => entCache.data["p" + h] || state.plugDefs[h] || null;
 const plugName = h => plugDef(h)?.n || String(h);
-const plugKind = h => { const m = /\.([a-z_]+)$/.exec(plugDef(h)?.c || ""); return m && PLUG_KINDS.includes(m[1]) ? m[1] : null; };
+function plugKind(h) {
+  const d = plugDef(h);
+  if (!d) return null;
+  const s = `${d.c} ${d.t}`.toLowerCase();
+  if (/fragment/.test(s)) return "fragments";
+  if (/aspect/.test(s)) return "aspects";
+  if (/super/.test(s)) return "supers";
+  if (/grenade/.test(s)) return "grenades";
+  if (/melee/.test(s)) return "melee";
+  if (/class[\s_.-]?abilit/.test(s)) return "class_abilities";
+  if (/movement|jump/.test(s)) return "movement";
+  return null;
+}
+const ELEMENT_TOKENS = { arc: 2, solar: 3, thermal: 3, void: 4, stasis: 6, strand: 7 };
+function plugElement(h) {
+  for (const tok of (plugDef(h)?.c || "").toLowerCase().split(/[._\s-]+/)) if (ELEMENT_TOKENS[tok]) return ELEMENT_TOKENS[tok];
+  return 0;
+}
 const isEmptyPlug = h => !h || /^empty/i.test(plugDef(h)?.n || "") || /^$/.test(plugDef(h)?.n ?? "x");
 
 /* ---------- inventory ---------- */
@@ -392,16 +415,40 @@ function subclassElementByName(name, hud) {
   return hud || 0;
 }
 
+const SOCKET_CAT = {
+  super: [457473665],
+  abilities: [309722977, 3218807805],
+  aspects: [2047681910, 2140934067, 764703411, 3400923910],
+  fragments: [271461480, 1313488945, 193371309, 2819965312],
+};
+
 async function getSubclassInfo(cid) {
   if (state.subInfo[cid]) return state.subInfo[cid];
   await ensureSocketData();
   const subs = state.items.filter(i => i.def.itemType === ITEMTYPE_SUBCLASS && i.owner === cid);
   if (!subs.length) throw new Error("No subclasses found on this character.");
   await fetchEntities("s", subs.map(s => s.hash), d => ({
-    e: (d.sockets?.socketEntries || []).map(s => ({ i: s.singleInitialItemHash || 0, r: s.reusablePlugSetHash || 0 })),
+    e: (d.sockets?.socketEntries || []).map(s => ({
+      i: s.singleInitialItemHash || 0,
+      r: s.reusablePlugSetHash || 0,
+      ri: (s.reusablePlugItems || []).map(p => p.plugItemHash),
+    })),
+    cats: (d.sockets?.socketCategories || []).map(c => ({ h: c.socketCategoryHash, idx: c.socketIndexes || [] })),
     h: d.talentGrid?.hudDamageType || 0,
   }));
+  const defsList = subs.map(s => entCache.data["s" + s.hash]).filter(Boolean);
+  await fetchEntities("ps", defsList.flatMap(d => d.e.map(e => e.r)), d => (d.reusablePlugItems || []).map(p => p.plugItemHash), "DestinyPlugSetDefinition");
+
   const sd = state.socketData;
+  // Plug-set entries Bungie reports as visible for any character (unlock flags are unreliable per character).
+  const seen = setHash => {
+    const out = new Set();
+    const addAll = list => { for (const p of list || []) if (p.enabled || p.canInsert) out.add(p.plugItemHash); };
+    addAll(sd.profilePlugs[setHash]);
+    for (const c of Object.values(sd.charPlugs)) addAll(c?.plugs?.[setHash]);
+    return out;
+  };
+
   const raw = subs.map(s => {
     const def = entCache.data["s" + s.hash];
     if (!def) return null;
@@ -409,42 +456,38 @@ async function getSubclassInfo(cid) {
     const reus = sd.reusable[s.id]?.plugs || {};
     const avail = {};
     def.e.forEach((e, idx) => {
-      const set = new Set();
-      for (const p of reus[idx] || []) if (p.canInsert && p.enabled) set.add(p.plugItemHash);
-      if (e.r) {
-        for (const p of sd.profilePlugs[e.r] || []) if (p.canInsert && p.enabled) set.add(p.plugItemHash);
-        for (const p of sd.charPlugs[cid]?.plugs?.[e.r] || []) if (p.canInsert && p.enabled) set.add(p.plugItemHash);
-      }
-      if (cur[idx]) set.add(cur[idx]);
-      avail[idx] = [...set];
+      const defined = [...new Set([...(entCache.data["ps" + e.r] || []), ...e.ri, ...(reus[idx] || []).map(p => p.plugItemHash)])];
+      const vis = e.r ? seen(e.r) : new Set();
+      let list = defined.filter(h => vis.has(h));
+      if (!list.length) list = defined;
+      if (cur[idx] && !list.includes(cur[idx])) list.push(cur[idx]);
+      avail[idx] = list;
     });
     return { s, def, cur, avail };
   }).filter(Boolean);
 
   const allPlugs = raw.flatMap(x => [...Object.values(x.avail).flat(), ...x.def.e.map(e => e.i)]);
-  await fetchEntities("p", allPlugs.filter(h => !state.plugDefs[h]), slimPlug);
+  await fetchEntities("p", allPlugs, slimPlug);
 
   const infos = raw.map(x => {
-    const groups = {};
-    x.def.e.forEach((e, idx) => {
-      const counts = {};
-      for (const h of x.avail[idx]) { if (isEmptyPlug(h)) continue; const k = plugKind(h); if (k) counts[k] = (counts[k] || 0) + 1; }
-      const kind = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
-      if (kind) (groups[kind] = groups[kind] || []).push(idx);
-    });
-    return { ...x, groups, element: subclassElementByName(x.s.def.name, x.def.h) };
+    const groups = { supers: [], abilities: [], aspects: [], fragments: [] };
+    for (const c of x.def.cats) {
+      if (SOCKET_CAT.super.includes(c.h)) groups.supers.push(...c.idx);
+      else if (SOCKET_CAT.abilities.includes(c.h)) groups.abilities.push(...c.idx);
+      else if (SOCKET_CAT.aspects.includes(c.h)) groups.aspects.push(...c.idx);
+      else if (SOCKET_CAT.fragments.includes(c.h)) groups.fragments.push(...c.idx);
+    }
+    const empty = idx => x.def.e[idx]?.i || 0;
+    const choices = idx => x.avail[idx].filter(h => h && !((groups.aspects.includes(idx) || groups.fragments.includes(idx)) && h === empty(idx)) && !/^empty/i.test(plugDef(h)?.n || ""));
+    return { ...x, groups, choices, element: subclassElementByName(x.s.def.name, x.def.h) };
   });
+
   if (!state.subLogged?.[cid]) {
     state.subLogged = state.subLogged || {};
     state.subLogged[cid] = true;
-    log(`Subclasses on ${CLASS_NAME[state.characters[cid]?.classType] || "character"}: ` + infos.map(info => {
-      const found = PLUG_KINDS.map(k => `${k}:${(info.groups[k] || []).length}`).join(" ");
-      return `${info.s.def.name} [sockets ${info.def.e.length}; ${found}]`;
-    }).join(" | "));
-    const unclassified = infos.flatMap(info => info.def.e.map((e, idx) => ({ info, idx }))
-      .filter(({ info, idx }) => !Object.values(info.groups).flat().includes(idx))
-      .map(({ info, idx }) => `${info.s.def.name}#${idx}=${[...new Set(info.avail[idx].map(h => plugDef(h)?.c || "?"))].slice(0, 3).join("/")}`));
-    if (unclassified.length) log("Unclassified sockets: " + unclassified.join(" ; "));
+    log(`Subclasses on ${CLASS_NAME[state.characters[cid]?.classType] || "character"}: ` + infos.map(i =>
+      `${i.s.def.name} [super ${i.groups.supers.length}, abilities ${i.groups.abilities.length}, aspects ${i.groups.aspects.length}, fragments ${i.groups.fragments.length}; options ${Object.values(i.avail).reduce((a, l) => a + l.length, 0)}]`
+    ).join(" | "));
   }
   state.subInfo[cid] = infos;
   return infos;
@@ -463,7 +506,7 @@ function superElement(infos, superHash) {
 
 function resolveElement(infos, info, superHash) {
   if (info.element !== "prism") return info.element || 0;
-  const el = superElement(infos, superHash);
+  const el = superElement(infos, superHash) || plugElement(superHash);
   if (!el) log(`Couldn't determine the element of ${plugName(superHash)}; Monochromatic not applied.`);
   return el;
 }
@@ -546,20 +589,19 @@ async function rollSubclass(cid) {
   const infos = await getSubclassInfo(cid);
   if (!infos.length) throw new Error("Couldn't read subclasses for this character.");
   const info = pick(infos);
-  const missing = PLUG_KINDS.filter(k => !info.groups[k]);
-  if (missing.length) log(`${info.s.def.name}: couldn't detect ${missing.map(k => PLUG_LABEL[k]).join(", ")}; those stay as they are.`);
+  if (!info.groups.supers.length && !info.groups.abilities.length) log(`${info.s.def.name}: couldn't read its sockets; only the subclass itself will change.`);
   const abilities = [];
-  for (const kind of ["supers", "class_abilities", "movement", "melee", "grenades"]) {
-    for (const idx of info.groups[kind] || []) {
-      const choices = info.avail[idx].filter(h => !isEmptyPlug(h));
-      if (choices.length) abilities.push({ idx, hash: pick(choices), kind });
-    }
+  for (const idx of [...info.groups.supers, ...info.groups.abilities]) {
+    const choices = info.choices(idx);
+    if (!choices.length) continue;
+    const hash = pick(choices);
+    abilities.push({ idx, hash, kind: info.groups.supers.includes(idx) ? "supers" : (plugKind(hash) || "ability") });
   }
-  const union = idxs => [...new Set(idxs.flatMap(idx => info.avail[idx]).filter(h => !isEmptyPlug(h)))];
-  const aIdx = info.groups.aspects || [];
+  const union = idxs => [...new Set(idxs.flatMap(idx => info.choices(idx)))];
+  const aIdx = info.groups.aspects;
   const aspects = shuffle(union(aIdx)).slice(0, aIdx.length);
-  let cap = aspects.reduce((s, h) => s + (plugDef(h)?.k || 0), 0);
-  const fIdx = info.groups.fragments || [];
+  let cap = aspects.reduce((sum, h) => sum + (plugDef(h)?.k || 0), 0);
+  const fIdx = info.groups.fragments;
   if (aspects.length && !cap) { cap = Math.min(4, fIdx.length); log("Aspect fragment capacity unavailable; assuming 4 fragments."); }
   const fragments = shuffle(union(fIdx)).slice(0, Math.min(cap, fIdx.length));
   const superHash = abilities.find(a => a.kind === "supers")?.hash || 0;
@@ -788,7 +830,8 @@ async function applySubclass(r) {
   // Clear fragment sockets beyond the new fragment count first, so nothing is duplicated or stranded.
   const fIdx = info.groups.fragments || [];
   for (const idx of fIdx.slice(r.fragments.length)) {
-    if (!isEmptyPlug(cur[idx])) await insert(idx, info.def.e[idx]?.i);
+    const init = info.def.e[idx]?.i;
+    if (init && cur[idx] !== init && !isEmptyPlug(cur[idx])) await insert(idx, init);
   }
   await placeGroup(info.groups.aspects || [], r.aspects);
   await placeGroup(fIdx.slice(0, r.fragments.length), r.fragments);
