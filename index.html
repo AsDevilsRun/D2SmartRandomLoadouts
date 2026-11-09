@@ -697,7 +697,8 @@ function iconRow(label, icon, value, plugHash) {
   const b = document.createElement("td"); b.className = "icons";
   if (icon) {
     const img = document.createElement("img"); img.src = BUNGIE + icon; img.alt = "";
-    if (plugHash && STRAND_WRONG_COLOR.includes(plugDef(plugHash)?.ch)) img.className = "strandfix";
+    const pd = plugHash ? plugDef(plugHash) : null;
+    if (pd && (STRAND_WRONG_COLOR.includes(pd.ch) || /\.strand\.(class_abilities|movement)$/.test(pd.c || ""))) img.className = "strandfix";
     b.append(img);
   }
   b.append(document.createTextNode(value));
