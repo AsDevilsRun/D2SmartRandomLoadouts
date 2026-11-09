@@ -1453,21 +1453,33 @@ async function planMods(weapons, armor) {
       used.add(pickC.sk.idx);
       placed.push({ idx: pickC.sk.idx, hash: pickC.hash, name: w.name, prio: w.prio, cost: plugDef(pickC.hash)?.e || 0 });
     }
-    // Energy: mods left in untouched sockets still count.
+    // Energy. The stat socket (first) is filled last, so its current mod never counts against the other mods.
+    // Old mods in other untouched sockets are cleared before any wanted mod is dropped.
     const cap = item.energyCap || 10;
-    const other = sockets.filter(sk => !used.has(sk.idx)).reduce((sum, sk) => sum + (plugDef(cur[sk.idx])?.e || 0), 0);
+    const cost = h => plugDef(h)?.e || 0;
+    const first = sockets[0] && !used.has(sockets[0].idx) ? sockets[0] : null;
+    const untouched = sockets.filter(sk => !used.has(sk.idx) && sk !== first);
     placed.sort((a, b) => a.prio - b.prio);
-    let total = other + placed.reduce((sum, p) => sum + p.cost, 0);
-    while (total > cap && placed.length) {
-      const drop = placed.pop();
+    let total = placed.reduce((sum, p) => sum + p.cost, 0) + untouched.reduce((sum, sk) => sum + cost(cur[sk.idx]), 0);
+    for (const sk of [...untouched].sort((a, b) => cost(cur[b.idx]) - cost(cur[a.idx]))) {
+      if (total <= cap) break;
+      const c = cost(cur[sk.idx]);
+      if (!c || !sk.empty) continue;
+      total -= c;
+      used.add(sk.idx);
+      placed.push({ idx: sk.idx, hash: sk.empty, name: `remove ${plugName(cur[sk.idx])}`, prio: 100, cost: 0 });
+    }
+    for (let k = placed.length - 1; total > cap && k >= 0; k--) {
+      if (placed[k].prio >= 100) continue;
+      const [drop] = placed.splice(k, 1);
       total -= drop.cost;
       missing.push({ name: drop.name, why: `not enough energy (${cap})` });
     }
-    // Stat mod in the first mod socket with whatever energy is left: random per piece, weighted toward the exotic's Focus, never Health.
-    const first = sockets[0];
-    if (first && !used.has(first.idx)) {
-      const curCost = plugDef(cur[first.idx])?.e || 0;
-      const budget = cap - (total - curCost);
+    // Stat mod in the first mod socket with whatever energy is left (full, else Minor): random per piece, weighted toward the exotic's Focus, never Health.
+    if (first) {
+      const curCost = cost(cur[first.idx]);
+      const budget = cap - total;
+      total += curCost;
       found: for (const stat of weightedOrder(STAT_MODS, st => focus.has(norm(st)) ? FOCUS_STAT_WEIGHT : 1)) {
         for (const name of [`${stat} Mod`, `Minor ${stat} Mod`]) {
           const h = first.options.find(x => norm(plugDef(x)?.n || "") === norm(name) && fits(first, x));
@@ -1479,6 +1491,12 @@ async function planMods(weapons, armor) {
             break found;
           }
         }
+      }
+      // Nothing fits: empty the socket if its current mod would push the piece over its energy.
+      if (!used.has(first.idx) && curCost > budget && first.empty) {
+        used.add(first.idx);
+        placed.push({ idx: first.idx, hash: first.empty, name: `remove ${plugName(cur[first.idx])}`, prio: 100, cost: 0 });
+        total -= curCost;
       }
     }
     return { item, cur, placed, missing, empties: Object.fromEntries(sockets.map(sk => [sk.idx, sk.empty])) };
