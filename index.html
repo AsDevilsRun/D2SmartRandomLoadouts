@@ -38,6 +38,7 @@
   .checklist label.owned { color:var(--text); }
   summary { cursor:pointer; }
   .note { margin-top:8px; padding:8px 10px; border:1px solid var(--accent); border-radius:6px; color:var(--accent); }
+  img.strandfix { filter: hue-rotate(265deg) brightness(1.3); }
   td.icons img { width:28px; height:28px; display:inline-block; vertical-align:middle; margin-right:6px; }
   .navlink { font-size:13px; font-weight:400; color:var(--dim); margin-left:12px; text-decoration:none; }
   .navlink:hover { color:var(--accent); }
@@ -688,11 +689,17 @@ function itemRow(i, sub) {
   return tr;
 }
 
-function iconRow(label, icon, value) {
+/* Bungie's strand class-ability and movement icons are the wrong color; DIM applies the same filter. */
+const STRAND_WRONG_COLOR = [2480042224, 2552562702, 2200902275, 2139679542, 1979332108, 3728449707];
+function iconRow(label, icon, value, plugHash) {
   const tr = document.createElement("tr");
   const a = document.createElement("td"); a.className = "label"; a.textContent = label;
   const b = document.createElement("td"); b.className = "icons";
-  if (icon) { const img = document.createElement("img"); img.src = BUNGIE + icon; img.alt = ""; b.append(img); }
+  if (icon) {
+    const img = document.createElement("img"); img.src = BUNGIE + icon; img.alt = "";
+    if (plugHash && STRAND_WRONG_COLOR.includes(plugDef(plugHash)?.ch)) img.className = "strandfix";
+    b.append(img);
+  }
   b.append(document.createTextNode(value));
   tr.append(a, b);
   return tr;
@@ -716,7 +723,7 @@ function renderRoll() {
   if (r) {
     const el = r.info.element === "prism" ? `Prismatic (${DMG_NAME[r.element] || "?"} super)` : DMG_NAME[r.element] || "";
     st.append(iconRow("Subclass", r.info.s.def.icon, `${r.info.s.def.name} — ${el}`));
-    for (const a of r.abilities) st.append(iconRow(PLUG_LABEL[a.kind] || "Ability", plugDef(a.hash)?.i, plugName(a.hash)));
+    for (const a of r.abilities) st.append(iconRow(PLUG_LABEL[a.kind] || "Ability", plugDef(a.hash)?.i, plugName(a.hash), a.hash));
     if (!r.aspects.length) st.append(iconRow("Aspects", "", "—"));
     for (const h of r.aspects) st.append(iconRow("Aspect", plugDef(h)?.i, plugName(h)));
     if (!r.fragments.length) st.append(iconRow("Fragments", "", "—"));
