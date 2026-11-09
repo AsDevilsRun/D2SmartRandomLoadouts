@@ -434,9 +434,17 @@ async function getSubclassInfo(cid) {
     });
     return { ...x, groups, element: subclassElementByName(x.s.def.name, x.def.h) };
   });
-  for (const info of infos) {
-    const missing = PLUG_KINDS.filter(k => !info.groups[k]);
-    if (missing.length) log(`${info.s.def.name}: no sockets detected for ${missing.join(", ")}.`);
+  if (!state.subLogged?.[cid]) {
+    state.subLogged = state.subLogged || {};
+    state.subLogged[cid] = true;
+    log(`Subclasses on ${CLASS_NAME[state.characters[cid]?.classType] || "character"}: ` + infos.map(info => {
+      const found = PLUG_KINDS.map(k => `${k}:${(info.groups[k] || []).length}`).join(" ");
+      return `${info.s.def.name} [sockets ${info.def.e.length}; ${found}]`;
+    }).join(" | "));
+    const unclassified = infos.flatMap(info => info.def.e.map((e, idx) => ({ info, idx }))
+      .filter(({ info, idx }) => !Object.values(info.groups).flat().includes(idx))
+      .map(({ info, idx }) => `${info.s.def.name}#${idx}=${[...new Set(info.avail[idx].map(h => plugDef(h)?.c || "?"))].slice(0, 3).join("/")}`));
+    if (unclassified.length) log("Unclassified sockets: " + unclassified.join(" ; "));
   }
   state.subInfo[cid] = infos;
   return infos;
@@ -536,9 +544,10 @@ function rollArmor(rules, cls) {
 
 async function rollSubclass(cid) {
   const infos = await getSubclassInfo(cid);
-  const valid = infos.filter(x => x.groups.supers?.length);
-  if (!valid.length) throw new Error("Couldn't read subclass sockets for this character.");
-  const info = pick(valid);
+  if (!infos.length) throw new Error("Couldn't read subclasses for this character.");
+  const info = pick(infos);
+  const missing = PLUG_KINDS.filter(k => !info.groups[k]);
+  if (missing.length) log(`${info.s.def.name}: couldn't detect ${missing.map(k => PLUG_LABEL[k]).join(", ")}; those stay as they are.`);
   const abilities = [];
   for (const kind of ["supers", "class_abilities", "movement", "melee", "grenades"]) {
     for (const idx of info.groups[kind] || []) {
@@ -727,21 +736,28 @@ async function equipSet(cid, items) {
     method: "POST",
     body: { itemIds: items.map(i => i.id), characterId: cid, membershipType: state.membership.type },
   });
-  for (const res of r?.equipResults || []) {
-    if (res.equipStatus !== 1) {
-      const it = items.find(i => i.id === res.itemInstanceId);
-      log(`Couldn't equip ${it ? it.def.name : res.itemInstanceId} (status ${res.equipStatus}).`);
-    }
-  }
+  return r;
+}
+
+async function freshSubclassInfo(cid, itemId) {
+  state.socketData = null;
+  delete state.subInfo[cid];
+  const infos = await getSubclassInfo(cid);
+  return infos.find(x => x.s.id === itemId) || null;
 }
 
 async function applySubclass(r) {
-  const { info, charId } = r;
+  const { charId } = r;
   const m = state.membership;
+  const info = (await freshSubclassInfo(charId, r.info.s.id)) || r.info;
   const item = info.s;
-  if (!item.equipped) {
+  r.errors = {};
+  const current = state.items.find(i => i.id === item.id);
+  if (!(current ? current.equipped : item.equipped)) {
     log(`Equipping ${item.def.name}.`);
-    await bungie("/Destiny2/Actions/Items/EquipItem/", { method: "POST", body: { itemId: item.id, characterId: charId, membershipType: m.type } });
+    try {
+      await bungie("/Destiny2/Actions/Items/EquipItem/", { method: "POST", body: { itemId: item.id, characterId: charId, membershipType: m.type } });
+    } catch (e) { r.errors.subclass = e.message; }
     await sleep(200);
   }
   const cur = info.cur.slice();
@@ -752,10 +768,10 @@ async function applySubclass(r) {
         method: "POST",
         body: { plug: { socketIndex: idx, socketArrayType: 0, plugItemHash: hash }, itemId: item.id, characterId: charId, membershipType: m.type },
       });
-      cur[idx] = hash;
     } catch (e) {
-      log(`Couldn't set ${plugName(hash)} (socket ${idx}): ${e.message}`);
+      r.errors[hash] = e.message; // only reported if verification shows it didn't apply
     }
+    cur[idx] = hash;
     await sleep(250);
   };
   const placeGroup = async (idxs, targets) => {
@@ -776,15 +792,28 @@ async function applySubclass(r) {
   }
   await placeGroup(info.groups.aspects || [], r.aspects);
   await placeGroup(fIdx.slice(0, r.fragments.length), r.fragments);
-  log(`Subclass set: ${item.def.name}.`);
+}
+
+async function verifySubclass(r) {
+  const info = await freshSubclassInfo(r.charId, r.info.s.id);
+  if (!info) { log("Couldn't re-read the subclass to verify it."); return; }
+  const problems = [];
+  if (!info.s.equipped) problems.push(`${info.s.def.name} not equipped${r.errors?.subclass ? ` (${r.errors.subclass})` : ""}`);
+  const curSet = new Set(info.cur);
+  const why = h => (r.errors?.[h] ? ` (${r.errors[h]})` : "");
+  for (const a of r.abilities) if (info.cur[a.idx] !== a.hash) problems.push(`${plugName(a.hash)}${why(a.hash)}`);
+  for (const h of [...r.aspects, ...r.fragments]) if (!curSet.has(h)) problems.push(`${plugName(h)}${why(h)}`);
+  if (problems.length) log("Subclass — not applied: " + problems.join("; "));
+  else log(`Subclass verified: ${info.s.def.name}.`);
 }
 
 async function equipRoll() {
   const cid = selectedChar();
   const cls = selectedClass();
+  let subApplied = false;
   if (state.roll.subclass) {
     if (state.roll.subclass.charId === cid) {
-      try { await applySubclass(state.roll.subclass); } catch (e) { log("Subclass error: " + e.message); }
+      try { await applySubclass(state.roll.subclass); subApplied = true; } catch (e) { log("Subclass error: " + e.message); }
     } else log("Subclass roll is for a different character; skipping subclass.");
   }
   const weapons = state.roll.weapons || [];
@@ -805,15 +834,18 @@ async function equipRoll() {
       await transfer(it, false, cid);
     }
     // Legendaries first so a currently equipped exotic is replaced before the new exotic goes on.
-    await equipSet(cid, roll.filter(i => !isExo(i)));
-    await equipSet(cid, roll.filter(isExo));
+    for (const group of [roll.filter(i => !isExo(i)), roll.filter(isExo)]) {
+      try { await equipSet(cid, group); } catch (e) { log("Equip request error: " + e.message); }
+    }
   }
-  log("Equip finished.");
   await loadProfile();
   const byId = new Map(state.items.map(i => [i.id, i]));
+  const failed = roll.filter(i => { const f = byId.get(i.id); return !f || f.owner !== cid || !f.equipped; });
+  if (failed.length) log("Not equipped: " + failed.map(i => i.def.name).join(", "));
+  else if (roll.length) log("Weapons/armor verified.");
+  if (subApplied) await verifySubclass(state.roll.subclass);
   state.roll.weapons = state.roll.weapons?.map(i => byId.get(i.id) || i) || null;
   state.roll.armor = state.roll.armor?.map(i => byId.get(i.id) || i) || null;
-  state.roll.subclass = null;
   renderRoll();
 }
 
