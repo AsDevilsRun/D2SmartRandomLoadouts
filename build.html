@@ -776,44 +776,47 @@ function rollWeapons(rules, E) {
   throw new Error("Couldn't build a weapon loadout that meets the rules" + (need ? ` with ${need.label}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
 }
 
+/* Exotic first, then any set-bonus pieces, then random legendaries for the rest. Runs after weapons so set bonuses can weigh them. */
 async function rollArmor(rules, cls, exoticName) {
   const off = exoticOff("a");
   const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls
     && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name))));
-  if (rules.guaranteedExoticArmor && !pool.some(isExo)) throw new Error(`No eligible exotic armor for ${CLASS_NAME[cls]} (check the exotic list).`);
-  let set = null;
-  for (let attempt = 0; attempt < 100 && !set; attempt++) {
-    const picks = {};
-    let exo = false, ok = true;
-    const take = i => { picks[i.def.bucket] = i; if (isExo(i)) exo = true; };
-    if (exoticName) take(pick(pool.filter(i => isExo(i) && i.def.name === exoticName)));
-    else if (rules.guaranteedExoticArmor) take(pickByName(pool.filter(isExo)));
-    for (const b of shuffle(ARMOR_BUCKETS)) {
-      if (picks[b]) continue;
-      const p = pickByName(pool.filter(i => i.def.bucket === b && (!exo || !isExo(i))));
-      if (!p) { ok = false; break; }
-      take(p);
-    }
-    if (ok) set = ARMOR_BUCKETS.map(b => picks[b]);
-  }
-  if (!set) throw new Error(`Couldn't build an armor set for ${CLASS_NAME[cls]} that meets the rules.`);
+  const legendaries = pool.filter(i => !isExo(i));
+  const exoName = exoticName || pickByName(pool.filter(isExo))?.def.name;
+  if (!exoName) throw new Error(`No eligible exotic armor for ${CLASS_NAME[cls]} (check the exotic list).`);
+  const fa = await focusArchetypes({ def: { name: exoName } }, pool, true);
+  const copies = pool.filter(i => isExo(i) && i.def.name === exoName);
+  const goodCopies = fa ? copies.filter(fa.okArch) : [];
+  const exo = pick(goodCopies.length ? goodCopies : copies);
+  const free = ARMOR_BUCKETS.filter(b => b !== exo.def.bucket);
+  for (const b of free) if (!legendaries.some(i => i.def.bucket === b)) throw new Error(`No legendary ${SLOT_NAME[b]} for ${CLASS_NAME[cls]}.`);
 
-  // Archetypes from the exotic's Focus (sheet Focus tab).
-  const exo = set.find(isExo);
-  const fa = await focusArchetypes(exo, pool, true);
-  if (!fa) return set;
-  const { allowed, okArch } = fa;
-  return set.map(piece => {
-    const same = isExo(piece)
-      ? pool.filter(i => i.def.name === piece.def.name)
-      : pool.filter(i => !isExo(i) && i.def.bucket === piece.def.bucket);
-    const good = same.filter(okArch);
-    if (okArch(piece) || !good.length) {
-      if (!good.length && !isExo(piece)) log(`No ${SLOT_NAME[piece.def.bucket]} with ${[...allowed].join("/")}; keeping ${piece.def.name}.`);
-      return piece;
-    }
-    return isExo(piece) ? pick(good) : pickByName(good);
-  });
+  const picks = { [exo.def.bucket]: exo };
+  const sets = await planSetBonus(exo, free, legendaries);
+  for (const c of sets) for (const b of c.buckets) {
+    const cands = c.items[b];
+    const good = fa ? cands.filter(fa.okArch) : [];
+    picks[b] = pickByName(good.length ? good : cands);
+  }
+  // Random fill avoids sets already in the build, so extra bonuses only show up when nothing else fits.
+  const setName = await armorSetNames(legendaries);
+  const usedSets = () => new Set(Object.values(picks).map(i => setName[i.id]).filter(Boolean));
+  for (const b of shuffle(free)) {
+    if (picks[b]) continue;
+    const all = legendaries.filter(i => i.def.bucket === b);
+    const used = usedSets();
+    const fresh = all.filter(i => !used.has(setName[i.id]));
+    const cands = fresh.length ? fresh : all;
+    const good = fa ? cands.filter(fa.okArch) : [];
+    if (fa && !good.length) log(`No ${SLOT_NAME[b]} with ${[...fa.allowed].join("/")}; picking any.`);
+    picks[b] = pickByName(good.length ? good : cands);
+  }
+  if (sets.length) log("Set bonus: " + sets.map(c => {
+    const pcs = c.buckets.length >= 4 ? "4" : "2";
+    const bonus = SET_BY_NORM[norm(c.name)];
+    return `${c.name} ${pcs}-piece (${(pcs === "4" ? ["2", "4"] : ["2"]).map(p => bonus?.[p]?.n).filter(Boolean).join(" + ") || "unranked"})`;
+  }).join("; ") + ".");
+  return ARMOR_BUCKETS.map(b => picks[b]);
 }
 
 /* Archetypes allowed by the exotic's Focus, and a test for armor pieces; null when the Focus names none. */
@@ -851,21 +854,15 @@ function setBonusWeight(setName, pcs, ctx) {
   return b.w * Math.min(1 + score, 10);
 }
 
-/* After armor (and weapons) are rolled, sometimes swap legendary pieces to form set bonuses, weighted toward the build. */
-async function applySetBonus(cls) {
-  const armor = state.roll.armor;
-  if (!armor) return;
+/* Sometimes aim for set bonuses: pick which sets and slots, weighted by tier and fit with the exotic, subclass and weapons. */
+async function planSetBonus(exo, free, legendaries) {
   const target = weightedPick(SET_ODDS, o => o[1])[0];
-  if (!target) return;
-  const exo = armor.find(isExo);
-  const free = ARMOR_BUCKETS.filter(b => !armor.some(i => i.def.bucket === b && isExo(i)));
-  const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && i.def.tier === TIER_LEGENDARY);
-  const names = await armorSetNames(pool);
+  if (!target) return [];
+  const names = await armorSetNames(legendaries);
   const bySet = {};
-  for (const i of pool) {
+  for (const i of legendaries) {
     const n = names[i.id];
-    if (!n || !free.includes(i.def.bucket)) continue;
-    ((bySet[n] ||= {})[i.def.bucket] ||= []).push(i);
+    if (n && free.includes(i.def.bucket)) ((bySet[n] ||= {})[i.def.bucket] ||= []).push(i);
   }
   const sub = buildTags();
   const ctx = {
@@ -873,42 +870,20 @@ async function applySetBonus(cls) {
     wtypes: new Set((state.roll.weapons || []).map(w => norm(w.def.typeName || ""))),
   };
   const covered = (n, avail) => avail.filter(b => bySet[n][b]);
-  const choose = (need, avail, exclude, pcsWeight) => {
+  const choose = (need, avail, exclude, wf) => {
     const ok = Object.keys(bySet).filter(n => !exclude.includes(n) && covered(n, avail).length >= need);
     if (!ok.length) return null;
-    const n = weightedPick(ok, pcsWeight);
-    return { name: n, buckets: shuffle(covered(n, avail)).slice(0, need) };
+    const n = weightedPick(ok, wf);
+    return { name: n, items: bySet[n], buckets: shuffle(covered(n, avail)).slice(0, need) };
   };
   const w2 = n => setBonusWeight(n, "2", ctx);
   const w4 = n => setBonusWeight(n, "2", ctx) + setBonusWeight(n, "4", ctx);
-  let picks = [];
-  if (target === 4) { const c = choose(4, free, [], w4); if (c) picks = [c]; }
-  if (!picks.length) {
-    const a = choose(2, free, [], w2);
-    if (a) {
-      picks = [a];
-      if (target >= 2) {
-        const b = choose(2, free.filter(x => !a.buckets.includes(x)), [a.name], w2);
-        if (b) picks.push(b);
-      }
-    }
-  }
-  if (!picks.length) return;
-  const fa = await focusArchetypes(exo, pool, false);
-  const swap = {};
-  for (const c of picks) for (const b of c.buckets) {
-    const cands = bySet[c.name][b];
-    const good = fa ? cands.filter(fa.okArch) : [];
-    swap[b] = pickByName(good.length ? good : cands);
-  }
-  state.roll.armor = armor.map(i => swap[i.def.bucket] || i);
-  const label = c => {
-    const pcs = c.buckets.length >= 4 ? "4" : "2";
-    const bonus = SET_BY_NORM[norm(c.name)];
-    const parts = pcs === "4" ? ["2", "4"] : ["2"];
-    return `${c.name} ${pcs}-piece (${parts.map(p => bonus?.[p]?.n).filter(Boolean).join(" + ") || "unranked"})`;
-  };
-  log("Set bonus: " + picks.map(label).join("; ") + ".");
+  if (target === 4) { const c = choose(4, free, [], w4); if (c) return [c]; }
+  const a = choose(2, free, [], w2);
+  if (!a) return [];
+  if (target < 2) return [a];
+  const b = choose(2, free.filter(x => !a.buckets.includes(x)), [a.name], w2);
+  return b ? [a, b] : [a];
 }
 
 async function rollSubclass(cid, exoticName, chosenInfo) {
@@ -1838,6 +1813,7 @@ async function doRoll({ subclass, weapons, armor }) {
   const cid = selectedChar();
   const cls = selectedClass();
   const rules = state.rules;
+  let armorExotic = null;
   if (armor === "only" && state.roll.subclass && state.roll.subclass.charId === cid) {
     // Keep the subclass as rolled; pick an exotic that works with it.
     const sub = state.roll.subclass;
@@ -1860,16 +1836,19 @@ async function doRoll({ subclass, weapons, armor }) {
       log(`No exotic fits ${sub.info.s.def.name} as rolled; re-rolling its abilities and aspects for ${exotic}.`);
       state.roll.subclass = await rollSubclass(cid, exotic, sub.info);
     }
-    state.roll.armor = await rollArmor(rules, cls, exotic);
-    state.roll.armorClass = cls;
+    armorExotic = exotic;
   } else if (armor) {
     const { info, exotic } = await pickSubclassAndExotic(cid, cls);
-    state.roll.armor = await rollArmor(rules, cls, exotic);
-    state.roll.armorClass = cls;
+    armorExotic = exotic;
     state.roll.subclass = await rollSubclass(cid, exotic, info);
   } else if (subclass) {
     const exo = state.roll.armorClass === cls ? (state.roll.armor || []).find(isExo) : null;
     state.roll.subclass = await rollSubclass(cid, exo?.def.name);
+  }
+  if (armorExotic) {
+    // Only the exotic until weapons are known (weapon needs read it); the legendaries come after.
+    state.roll.armor = [pick(state.items.filter(i => isExo(i) && i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && i.def.name === armorExotic))];
+    state.roll.armorClass = cls;
   }
   const E = await weaponElement(cid);
   if (E && (weapons || state.roll.weapons)) log(`Monochromatic: ${DMG_NAME[E]}.`);
@@ -1879,9 +1858,7 @@ async function doRoll({ subclass, weapons, armor }) {
   }
   if (weapons) state.roll.weapons = rollWeapons(rules, E);
   else if (armor || subclass) ensureWeaponNeed(rules, E);
-  if (armor) {
-    try { await applySetBonus(cls); } catch (e) { log("Couldn't apply set bonus weighting: " + e.message); }
-  }
+  if (armorExotic) state.roll.armor = await rollArmor(rules, cls, armorExotic);
   state.roll.mods = null;
   if (rules.mods && state.roll.weapons && state.roll.armor) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
