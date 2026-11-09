@@ -665,6 +665,7 @@ async function rollSubclass(cid, exoticName) {
   const fIdx = info.groups.fragments;
   if (aspects.length && !cap) { cap = Math.min(4, fIdx.length); log("Aspect fragment capacity unavailable; assuming 4 fragments."); }
   const fragments = shuffle(union(fIdx)).slice(0, Math.min(cap, fIdx.length));
+  log(`${info.s.def.name} abilities: ` + abilities.map(a => `${plugName(a.hash)} [${plugDef(a.hash)?.c || "?"}; ${info.choices(a.idx).length} options: ${[...new Set(info.choices(a.idx).map(h => (plugDef(h)?.c || "?").split(".").slice(0, 2).join(".")))].join("/")}]`).join(" | "));
   const superHash = abilities.find(a => a.kind === "supers")?.hash || 0;
   return { charId: cid, info, abilities, aspects, fragments, element: resolveElement(infos, info, superHash) };
 }
