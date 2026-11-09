@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D2 Random Loadout</title>
+<style>
+  :root { --bg:#14161a; --card:#1d2026; --line:#2c3038; --text:#e6e6e6; --dim:#9aa0aa; --accent:#d9b44a; --bad:#e06c6c; --good:#6cc28a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-bottom:1px solid var(--line); }
+  h1 { font-size:18px; margin:0; }
+  h2 { font-size:14px; margin:0 0 8px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  main { max-width:1100px; margin:0 auto; padding:16px 20px 40px; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px; }
+  button, select { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 12px; font:inherit; cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--accent); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--accent); color:#111; border-color:var(--accent); font-weight:600; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:800px){ .grid { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:5px 6px; border-top:1px solid var(--line); vertical-align:middle; }
+  tr:first-child td { border-top:none; }
+  td img { width:36px; height:36px; display:block; border-radius:3px; }
+  .exotic { color:var(--accent); font-weight:600; }
+  .muted { color:var(--dim); }
+  textarea { width:100%; min-height:60px; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font:12px ui-monospace, monospace; resize:vertical; }
+  #log { white-space:pre-wrap; font:12px ui-monospace, monospace; color:var(--dim); max-height:220px; overflow:auto; }
+  .pill { display:inline-block; padding:2px 8px; margin:2px; border-radius:10px; font-size:12px; border:1px solid var(--line); }
+  .pill.have { border-color:var(--good); color:var(--good); }
+  .pill.missing { color:var(--dim); }
+  code { background:var(--bg); padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>D2 Random Loadout</h1>
+  <div id="account" class="muted"></div>
+</header>
+<main>
+  <section id="setup" class="card" hidden>
+    <h2>Setup required</h2>
+    <p>Edit <code>CONFIG</code> near the top of the script in this file: paste your Bungie API key and OAuth client ID, then redeploy.</p>
+  </section>
+
+  <section id="signin" hidden>
+    <button id="btnSignIn" class="primary">Sign in with Bungie</button>
+  </section>
+
+  <section id="app" hidden>
+    <div class="controls">
+      <label>Character <select id="charSelect"></select></label>
+      <button id="btnRollWeapons">Roll weapons</button>
+      <button id="btnRollArmor">Roll armor</button>
+      <button id="btnRollBoth">Roll both</button>
+      <button id="btnRefresh">Refresh inventory</button>
+      <button id="btnSignOut">Sign out</button>
+    </div>
+
+    <div class="grid">
+      <div class="card"><h2>Weapons</h2><table id="weaponTable"></table></div>
+      <div class="card"><h2>Armor</h2><table id="armorTable"></table></div>
+    </div>
+
+    <div class="card">
+      <h2>DIM search</h2>
+      <textarea id="dimString" readonly></textarea>
+      <div class="controls" style="margin:8px 0 0">
+        <button id="btnCopy">Copy</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="btnEquip" class="primary" disabled>Equip on character</button>
+      <span class="muted">Equip in orbit or a social space; the game rejects most equips inside activities.</span>
+    </div>
+
+    <details class="card">
+      <summary>Exotic weapon list (<span id="exoticCount"></span>)</summary>
+      <div id="exoticStatus" style="margin-top:8px"></div>
+    </details>
+  </section>
+
+  <div class="card"><h2>Log</h2><div id="log"></div></div>
+</main>
+
+<script>
+"use strict";
+
+/* ===================== CONFIG ===================== */
+const CONFIG = {
+  apiKey:   "PASTE_API_KEY_HERE",
+  clientId: "PASTE_CLIENT_ID_HERE",
+};
+
+/* Exotic weapons eligible for the roll. Only ones you own are used.
+   Names must match the in-game name (case and apostrophe style don't matter). */
+const EXOTIC_WEAPONS = [
+  "Tractor Cannon", "Choir of One", "Dead Messenger", "Gjallarhorn", "Hierarchy of Needs",
+  "Leviathan's Breath", "Still Hunt", "Truth", "Divinity", "Ergo Sum", "Fafnir",
+  "Izanagi's Burden", "Merciless", "One Thousand Voices", "Parasite", "Praxic Blade",
+  "Alethonym", "Anarchy", "Bastion", "D.A.R.C.I.", "Edge of Action", "Euphony", "Heirloom",
+  "Tessellation", "The Fourth Horseman", "Turncoat", "Wavesplitter", "Ager's Scepter",
+  "Arbalest", "Buried Bloodline", "Collective Obligation", "Cull's Shadow", "Delicate Tomb",
+  "Dragon's Breath", "Finality's Auger", "Graviton Lance", "Ice Breaker", "Khvostov 7G-0X",
+  "Legend of Acrius", "Necrochasm", "New Malpais", "Prometheus Lens", "Salvation's Grip",
+  "The Lament", "The Navigator", "Trinity Ghoul", "Vex Mythoclast",
+];
+/* ================================================== */
+
+const BUNGIE = "https://www.bungie.net";
+const API = BUNGIE + "/Platform";
+const BUCKET = {
+  KINETIC: 1498876634, ENERGY: 2465295065, POWER: 953998645,
+  HELMET: 3448274439, GAUNTLETS: 3551918588, CHEST: 14239492, LEGS: 20886954, CLASS: 1585787867,
+};
+const WEAPON_BUCKETS = [BUCKET.KINETIC, BUCKET.ENERGY, BUCKET.POWER];
+const ARMOR_BUCKETS = [BUCKET.HELMET, BUCKET.GAUNTLETS, BUCKET.CHEST, BUCKET.LEGS, BUCKET.CLASS];
+const SLOT_NAME = {
+  [BUCKET.KINETIC]: "Kinetic", [BUCKET.ENERGY]: "Energy", [BUCKET.POWER]: "Power",
+  [BUCKET.HELMET]: "Helmet", [BUCKET.GAUNTLETS]: "Gauntlets", [BUCKET.CHEST]: "Chest",
+  [BUCKET.LEGS]: "Legs", [BUCKET.CLASS]: "Class Item",
+};
+const AMMO_NAME = { 1: "Primary", 2: "Special", 3: "Heavy" };
+const CLASS_NAME = { 0: "Titan", 1: "Hunter", 2: "Warlock" };
+const TIER_LEGENDARY = 5, TIER_EXOTIC = 6;
+const ITEMTYPE_ARMOR = 2, ITEMTYPE_WEAPON = 3;
+const VAULT = "vault";
+const VAULT_BUCKET = 138197802;
+const CHAR_BUCKET_CAPACITY = 9;
+
+/* ---------- utilities ---------- */
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const norm = s => String(s).toLowerCase().replace(/[‘’`]/g, "'").replace(/\s+/g, " ").trim();
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+  del(k) { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } },
+};
+
+function log(msg) {
+  const el = $("log");
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent;
+}
+
+const state = {
+  token: null,
+  membership: null,
+  defs: null,
+  characters: {},
+  items: [],
+  roll: { weapons: null, armor: null, armorClass: null },
+};
+
+/* ---------- Bungie API ---------- */
+async function bungie(path, { method = "GET", body } = {}) {
+  const headers = { "X-API-Key": CONFIG.apiKey };
+  if (state.token) headers.Authorization = "Bearer " + state.token.access;
+  if (body) headers["Content-Type"] = "application/json";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await fetch(API + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    if (res.status === 401) { signOut(false); throw new Error("Session expired. Sign in again."); }
+    let json;
+    try { json = await res.json(); } catch { throw new Error(`HTTP ${res.status} from ${path}`); }
+    if (json.ErrorCode === 1) {
+      if (json.ThrottleSeconds > 0) await sleep(json.ThrottleSeconds * 1000);
+      return json.Response;
+    }
+    if (json.ErrorStatus === "WebAuthRequired" || json.ErrorCode === 99) {
+      signOut(false); throw new Error("Session expired. Sign in again.");
+    }
+    if (json.ThrottleSeconds > 0) { await sleep(json.ThrottleSeconds * 1000); continue; }
+    throw new Error(`${json.ErrorStatus}: ${json.Message}`);
+  }
+  throw new Error("Bungie is throttling requests. Wait a moment and retry.");
+}
+
+/* ---------- auth ---------- */
+function signIn() {
+  const st = Array.from(crypto.getRandomValues(new Uint32Array(4))).join("-");
+  store.set("d2r_oauth_state", st);
+  location.href = `${BUNGIE}/en/OAuth/Authorize?client_id=${encodeURIComponent(CONFIG.clientId)}&response_type=code&state=${encodeURIComponent(st)}`;
+}
+
+function signOut(reload = true) {
+  store.del("d2r_token");
+  state.token = null;
+  if (reload) location.reload();
+}
+
+async function handleRedirect() {
+  const p = new URLSearchParams(location.search);
+  const code = p.get("code");
+  if (!code) return;
+  const st = p.get("state");
+  history.replaceState(null, "", location.pathname);
+  const expected = store.get("d2r_oauth_state");
+  store.del("d2r_oauth_state");
+  if (!expected || st !== expected) throw new Error("Sign-in state mismatch. Sign in again.");
+  const res = await fetch(API + "/App/OAuth/Token/", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code, client_id: CONFIG.clientId }),
+  });
+  let j = {};
+  try { j = await res.json(); } catch { /* handled below */ }
+  if (!j.access_token) throw new Error("Token exchange failed: " + (j.error_description || j.error || `HTTP ${res.status}`));
+  state.token = { access: j.access_token, expires: Date.now() + (j.expires_in - 60) * 1000 };
+  store.set("d2r_token", state.token);
+}
+
+/* ---------- data loading ---------- */
+async function loadMembership() {
+  const r = await bungie("/User/GetMembershipsForCurrentUser/");
+  const ms = r.destinyMemberships || [];
+  if (!ms.length) throw new Error("No Destiny account on this Bungie profile.");
+  const m = ms.find(x => x.membershipId === r.primaryMembershipId)
+         || ms.find(x => x.crossSaveOverride === 0 || x.crossSaveOverride === x.membershipType)
+         || ms[0];
+  state.membership = { type: m.membershipType, id: m.membershipId, name: m.bungieGlobalDisplayName || m.displayName };
+  $("account").textContent = state.membership.name;
+}
+
+function slimDefs(raw) {
+  const out = {};
+  for (const [hash, d] of Object.entries(raw)) {
+    if ((d.itemType !== ITEMTYPE_WEAPON && d.itemType !== ITEMTYPE_ARMOR) || !d.inventory) continue;
+    out[hash] = {
+      name: d.displayProperties?.name || "?",
+      icon: d.displayProperties?.icon || "",
+      itemType: d.itemType,
+      tier: d.inventory.tierType,
+      bucket: d.inventory.bucketTypeHash,
+      ammo: d.equippingBlock?.ammoType || 0,
+      classType: d.classType,
+      typeName: d.itemTypeDisplayName || "",
+    };
+  }
+  return out;
+}
+
+async function loadDefs() {
+  const man = await bungie("/Destiny2/Manifest/");
+  const paths = man.jsonWorldComponentContentPaths.en;
+  log("Downloading item definitions…");
+  let raw = await (await fetch(BUNGIE + paths.DestinyInventoryItemLiteDefinition)).json();
+  let defs = slimDefs(raw);
+  const hasAmmo = Object.values(defs).some(d => d.itemType === ITEMTYPE_WEAPON && d.ammo);
+  if (!hasAmmo) {
+    log("Lite definitions lack ammo data; downloading full definitions (large)…");
+    raw = await (await fetch(BUNGIE + paths.DestinyInventoryItemDefinition)).json();
+    defs = slimDefs(raw);
+  }
+  state.defs = defs;
+  log(`Definitions loaded (${Object.keys(defs).length} weapons/armor).`);
+}
+
+async function loadProfile() {
+  const m = state.membership;
+  const r = await bungie(`/Destiny2/${m.type}/Profile/${m.id}/?components=102,200,201,205,300`);
+  state.characters = r.characters?.data || {};
+  const instances = r.itemComponents?.instances?.data || {};
+  const items = [];
+  const add = (it, owner, equipped) => {
+    const d = state.defs[it.itemHash];
+    if (!d || !it.itemInstanceId) return;
+    const slots = d.itemType === ITEMTYPE_WEAPON ? WEAPON_BUCKETS : ARMOR_BUCKETS;
+    if (!slots.includes(d.bucket)) return;
+    if (owner === VAULT ? it.bucketHash !== VAULT_BUCKET : it.bucketHash !== d.bucket) return; // skips postmaster
+    const inst = instances[it.itemInstanceId] || {};
+    items.push({ id: it.itemInstanceId, hash: it.itemHash, def: d, owner, equipped, power: inst.primaryStat?.value || 0 });
+  };
+  for (const it of r.profileInventory?.data?.items || []) add(it, VAULT, false);
+  for (const [cid, inv] of Object.entries(r.characterInventories?.data || {})) for (const it of inv.items) add(it, cid, false);
+  for (const [cid, inv] of Object.entries(r.characterEquipment?.data || {})) for (const it of inv.items) add(it, cid, true);
+  state.items = items;
+  log(`Inventory loaded: ${items.filter(i => i.def.itemType === ITEMTYPE_WEAPON).length} weapons, ${items.filter(i => i.def.itemType === ITEMTYPE_ARMOR).length} armor.`);
+}
+
+/* ---------- rolling ---------- */
+function pickByName(cands) {
+  const names = [...new Set(cands.map(i => i.def.name))];
+  if (!names.length) return null;
+  const name = pick(names);
+  return pick(cands.filter(i => i.def.name === name));
+}
+
+function ownedListedExotics() {
+  const listed = new Set(EXOTIC_WEAPONS.map(norm));
+  return state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && i.def.tier === TIER_EXOTIC && i.def.ammo && listed.has(norm(i.def.name)));
+}
+
+function rollWeapons() {
+  const weapons = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON);
+  const exotics = ownedListedExotics();
+  if (!exotics.length) throw new Error("You don't own any exotic on the list.");
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const exo = pickByName(exotics);
+    const used = [exo.def.bucket];
+    const result = [exo];
+    let ok = true;
+    for (const ammo of shuffle([1, 2, 3].filter(a => a !== exo.def.ammo))) {
+      const p = pickByName(weapons.filter(i => i.def.tier === TIER_LEGENDARY && i.def.ammo === ammo && !used.includes(i.def.bucket)));
+      if (!p) { ok = false; break; }
+      used.push(p.def.bucket);
+      result.push(p);
+    }
+    if (ok) return result.sort((a, b) => a.def.ammo - b.def.ammo);
+  }
+  throw new Error("Couldn't build a valid weapon loadout from your inventory.");
+}
+
+function rollArmor(cls) {
+  const armor = state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls);
+  const exo = pickByName(armor.filter(i => i.def.tier === TIER_EXOTIC));
+  if (!exo) throw new Error(`No exotic armor for ${CLASS_NAME[cls]}.`);
+  const result = [exo];
+  for (const b of ARMOR_BUCKETS) {
+    if (b === exo.def.bucket) continue;
+    const p = pickByName(armor.filter(i => i.def.tier === TIER_LEGENDARY && i.def.bucket === b));
+    if (!p) throw new Error(`No legendary ${SLOT_NAME[b]} for ${CLASS_NAME[cls]}.`);
+    result.push(p);
+  }
+  return result.sort((a, b) => ARMOR_BUCKETS.indexOf(a.def.bucket) - ARMOR_BUCKETS.indexOf(b.def.bucket));
+}
+
+/* ---------- rendering ---------- */
+function locationLabel(i) {
+  if (i.owner === VAULT) return "Vault";
+  const c = state.characters[i.owner];
+  const who = c ? CLASS_NAME[c.classType] : "Character";
+  return i.equipped ? `${who} (equipped)` : who;
+}
+
+function renderTable(tableId, items, isWeapon) {
+  const t = $(tableId);
+  t.replaceChildren();
+  for (const i of items || []) {
+    const tr = document.createElement("tr");
+    const tdIcon = document.createElement("td");
+    if (i.def.icon) { const img = document.createElement("img"); img.src = BUNGIE + i.def.icon; img.alt = ""; tdIcon.append(img); }
+    const tdName = document.createElement("td");
+    tdName.textContent = i.def.name;
+    if (i.def.tier === TIER_EXOTIC) tdName.className = "exotic";
+    const sub = document.createElement("div");
+    sub.className = "muted";
+    sub.textContent = isWeapon ? `${SLOT_NAME[i.def.bucket]} · ${AMMO_NAME[i.def.ammo]} · ${i.def.typeName}` : `${SLOT_NAME[i.def.bucket]} · ${i.power}`;
+    tdName.append(sub);
+    const tdLoc = document.createElement("td");
+    tdLoc.className = "muted";
+    tdLoc.textContent = locationLabel(i);
+    tr.append(tdIcon, tdName, tdLoc);
+    t.append(tr);
+  }
+}
+
+function renderRoll() {
+  renderTable("weaponTable", state.roll.weapons, true);
+  renderTable("armorTable", state.roll.armor, false);
+  const all = [...(state.roll.weapons || []), ...(state.roll.armor || [])];
+  $("dimString").value = all.map(i => "id:" + i.id).join(" or ");
+  $("btnEquip").disabled = !all.length;
+}
+
+function renderExoticStatus() {
+  const owned = new Set(ownedListedExotics().map(i => norm(i.def.name)));
+  const box = $("exoticStatus");
+  box.replaceChildren();
+  let have = 0;
+  for (const name of EXOTIC_WEAPONS) {
+    const s = document.createElement("span");
+    const h = owned.has(norm(name));
+    if (h) have++;
+    s.className = "pill " + (h ? "have" : "missing");
+    s.textContent = name;
+    s.title = h ? "Owned — eligible" : "Not owned, or name doesn't match the game";
+    box.append(s);
+  }
+  $("exoticCount").textContent = `${have} of ${EXOTIC_WEAPONS.length} owned`;
+}
+
+function populateChars() {
+  const sel = $("charSelect");
+  const prev = sel.value;
+  sel.replaceChildren();
+  const chars = Object.entries(state.characters).sort((a, b) => new Date(b[1].dateLastPlayed) - new Date(a[1].dateLastPlayed));
+  for (const [cid, c] of chars) {
+    const o = document.createElement("option");
+    o.value = cid;
+    o.textContent = `${CLASS_NAME[c.classType]} (${c.light})`;
+    sel.append(o);
+  }
+  if (prev && state.characters[prev]) sel.value = prev;
+}
+
+const selectedChar = () => $("charSelect").value;
+const selectedClass = () => state.characters[selectedChar()]?.classType;
+
+/* ---------- equipping ---------- */
+async function transfer(item, toVault, charId) {
+  await bungie("/Destiny2/Actions/Items/TransferItem/", {
+    method: "POST",
+    body: { itemReferenceHash: item.hash, stackSize: 1, transferToVault: toVault, itemId: item.id, characterId: charId, membershipType: state.membership.type },
+  });
+  item.owner = toVault ? VAULT : charId;
+  item.equipped = false;
+  await sleep(120);
+}
+
+async function makeRoom(cid, bucket, protectedIds) {
+  const inBucket = state.items.filter(i => i.owner === cid && !i.equipped && i.def.bucket === bucket);
+  if (inBucket.length < CHAR_BUCKET_CAPACITY) return;
+  const victim = inBucket.find(i => !protectedIds.has(i.id));
+  if (!victim) throw new Error(`No free ${SLOT_NAME[bucket]} space on character.`);
+  log(`Moving ${victim.def.name} to vault to make room.`);
+  await transfer(victim, true, cid);
+}
+
+async function dequip(item, protectedIds) {
+  const owner = item.owner;
+  const cls = state.characters[owner].classType;
+  const fits = i => i.def.bucket === item.def.bucket && !protectedIds.has(i.id) && i.def.tier !== TIER_EXOTIC
+                 && (i.def.itemType === ITEMTYPE_WEAPON || i.def.classType === cls);
+  let rep = state.items.find(i => i.owner === owner && !i.equipped && fits(i));
+  if (!rep) {
+    rep = state.items.find(i => i.owner === VAULT && fits(i));
+    if (!rep) throw new Error(`Can't free ${item.def.name}: no replacement for that slot.`);
+    await makeRoom(owner, item.def.bucket, protectedIds);
+    await transfer(rep, false, owner);
+  }
+  log(`Swapping ${item.def.name} off ${CLASS_NAME[cls]} (equipping ${rep.def.name}).`);
+  await bungie("/Destiny2/Actions/Items/EquipItem/", {
+    method: "POST",
+    body: { itemId: rep.id, characterId: owner, membershipType: state.membership.type },
+  });
+  rep.equipped = true;
+  item.equipped = false;
+  await sleep(120);
+}
+
+async function equipSet(cid, items) {
+  if (!items.length) return;
+  const r = await bungie("/Destiny2/Actions/Items/EquipItems/", {
+    method: "POST",
+    body: { itemIds: items.map(i => i.id), characterId: cid, membershipType: state.membership.type },
+  });
+  for (const res of r?.equipResults || []) {
+    if (res.equipStatus !== 1) {
+      const it = items.find(i => i.id === res.itemInstanceId);
+      log(`Couldn't equip ${it ? it.def.name : res.itemInstanceId} (status ${res.equipStatus}).`);
+    }
+  }
+}
+
+async function equipRoll() {
+  const cid = selectedChar();
+  const cls = selectedClass();
+  const weapons = state.roll.weapons || [];
+  let armor = state.roll.armor || [];
+  if (armor.length && state.roll.armorClass !== cls) {
+    log("Armor roll is for a different class; skipping armor.");
+    armor = [];
+  }
+  const roll = [...weapons, ...armor];
+  if (!roll.length) return;
+  const protectedIds = new Set(roll.map(i => i.id));
+
+  for (const it of roll) {
+    if (it.owner === cid) continue;
+    if (it.equipped) await dequip(it, protectedIds);
+    if (it.owner !== VAULT) { log(`${it.def.name} → vault`); await transfer(it, true, it.owner); }
+    await makeRoom(cid, it.def.bucket, protectedIds);
+    log(`${it.def.name} → ${CLASS_NAME[cls]}`);
+    await transfer(it, false, cid);
+  }
+  // Legendaries first so a currently equipped exotic is replaced before the new exotic goes on.
+  await equipSet(cid, roll.filter(i => i.def.tier !== TIER_EXOTIC));
+  await equipSet(cid, roll.filter(i => i.def.tier === TIER_EXOTIC));
+  log("Equip finished.");
+  await loadProfile();
+  const byId = new Map(state.items.map(i => [i.id, i]));
+  state.roll.weapons = state.roll.weapons?.map(i => byId.get(i.id) || i) || null;
+  state.roll.armor = state.roll.armor?.map(i => byId.get(i.id) || i) || null;
+  renderRoll();
+}
+
+/* ---------- UI wiring ---------- */
+function setBusy(b) {
+  for (const id of ["btnRollWeapons", "btnRollArmor", "btnRollBoth", "btnRefresh", "btnEquip", "charSelect"]) $(id).disabled = b;
+  if (!b) $("btnEquip").disabled = !((state.roll.weapons || []).length || (state.roll.armor || []).length);
+}
+
+async function busy(fn) {
+  setBusy(true);
+  try { await fn(); }
+  catch (e) { log("Error: " + e.message); }
+  finally { setBusy(false); }
+}
+
+function doRoll(weapons, armor) {
+  try {
+    if (weapons) state.roll.weapons = rollWeapons();
+    if (armor) { state.roll.armor = rollArmor(selectedClass()); state.roll.armorClass = selectedClass(); }
+    renderRoll();
+  } catch (e) { log("Error: " + e.message); }
+}
+
+function wire() {
+  $("btnSignIn").onclick = signIn;
+  $("btnSignOut").onclick = () => signOut(true);
+  $("btnRollWeapons").onclick = () => doRoll(true, false);
+  $("btnRollArmor").onclick = () => doRoll(false, true);
+  $("btnRollBoth").onclick = () => doRoll(true, true);
+  $("btnRefresh").onclick = () => busy(async () => { await loadProfile(); populateChars(); renderExoticStatus(); renderRoll(); });
+  $("btnEquip").onclick = () => busy(equipRoll);
+  $("charSelect").onchange = () => {
+    if (state.roll.armor && state.roll.armorClass !== selectedClass()) { state.roll.armor = null; renderRoll(); }
+  };
+  $("btnCopy").onclick = async () => {
+    const v = $("dimString").value;
+    try { await navigator.clipboard.writeText(v); log("DIM search copied."); }
+    catch { $("dimString").select(); log("Clipboard blocked; text selected for manual copy."); }
+  };
+}
+
+async function init() {
+  wire();
+  if (!CONFIG.apiKey || CONFIG.apiKey.startsWith("PASTE") || !CONFIG.clientId || CONFIG.clientId.startsWith("PASTE")) {
+    $("setup").hidden = false;
+    return;
+  }
+  try { await handleRedirect(); } catch (e) { log("Error: " + e.message); }
+  const t = store.get("d2r_token");
+  if (!state.token && t && t.expires > Date.now()) state.token = t;
+  if (!state.token) { $("signin").hidden = false; return; }
+  $("app").hidden = false;
+  await busy(async () => {
+    await loadMembership();
+    await loadDefs();
+    await loadProfile();
+    populateChars();
+    renderExoticStatus();
+    renderRoll();
+  });
+}
+
+init();
+</script>
+</body>
+</html>
