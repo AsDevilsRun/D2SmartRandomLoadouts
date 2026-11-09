@@ -71,6 +71,7 @@
     <div class="controls">
       <label>Character <select id="charSelect"></select></label>
       <button id="btnRollAll" class="primary">Roll build</button>
+      <button id="btnRollArmorSub">Reroll armor + subclass</button>
       <button id="btnRefresh">Refresh inventory</button>
       <button id="btnSignOut">Sign out</button>
     </div>
@@ -90,7 +91,7 @@
     <div class="grid">
       <div class="card"><h2 class="boxhead">Subclass <button id="btnRollSubclass" class="small">Reroll subclass</button></h2><table id="subclassTable"></table></div>
       <div class="card"><h2 class="boxhead">Weapons <button id="btnRollWeapons" class="small">Reroll weapons</button></h2><table id="weaponTable"></table><div id="weaponNote" class="note" hidden></div></div>
-      <div class="card"><h2 class="boxhead">Armor <button id="btnRollArmor" class="small">Reroll armor + subclass</button></h2><table id="armorTable"></table></div>
+      <div class="card"><h2 class="boxhead">Armor <button id="btnRollArmor" class="small">Reroll armor</button></h2><table id="armorTable"></table></div>
     </div>
 
     <div class="card"><h2>Mods</h2><table id="modTable"></table></div>
@@ -948,6 +949,21 @@ function subclassFits(rule, info) {
   return ruleGroups(rule, info).every(g => abilityPlugs.some(h => plugMeets(h, g)) || (!g.abilityOnly && aspectPlugs.some(h => plugMeets(h, g))));
 }
 
+/* Does this exotic's rule hold for the subclass exactly as rolled (its chosen abilities and aspects)? */
+function fitsRolledSubclass(rule, sub) {
+  const info = sub.info;
+  if (info.element === "prism") {
+    const agnostic = !elementalOnly(rule.elements).length && !hasReqs(rule);
+    if (rule.prism !== "Y" && !rule.elements.includes("prism") && !agnostic) return false;
+  } else {
+    const els = elementalOnly(rule.elements);
+    if (rule.elements.includes("prism") && !els.length) return false;
+    if (els.length && !els.includes(info.element)) return false;
+  }
+  const chosen = [...sub.abilities.map(a => a.hash), ...sub.aspects];
+  return ruleGroups(rule, info).every(g => chosen.some(h => plugMeets(h, g)));
+}
+
 function synergyCandidates(infos, exoticName) {
   const rule = exoticRule(exoticName);
   if (!rule) return { cands: infos, rule: null };
@@ -1470,7 +1486,7 @@ async function equipRoll() {
 }
 
 /* ---------- UI wiring ---------- */
-const BUSY_IDS = ["btnRollAll", "btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRefresh", "btnEquip", "charSelect"];
+const BUSY_IDS = ["btnRollArmorSub", "btnRollAll", "btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRefresh", "btnEquip", "charSelect"];
 function setBusy(b) {
   for (const id of BUSY_IDS) $(id).disabled = b;
   for (const el of document.querySelectorAll("[data-reroll]")) el.disabled = b;
@@ -1516,7 +1532,25 @@ async function doRoll({ subclass, weapons, armor }) {
   const cid = selectedChar();
   const cls = selectedClass();
   const rules = state.rules;
-  if (armor) {
+  if (armor === "only" && state.roll.subclass && state.roll.subclass.charId === cid) {
+    // Keep the subclass as rolled; pick an exotic that works with it.
+    const sub = state.roll.subclass;
+    const off = exoticOff("a");
+    const names = [...new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && isExo(i) && !off.has(i.def.name)).map(i => i.def.name))];
+    const exact = names.filter(n => fitsRolledSubclass(exoticRule(n), sub));
+    let exotic;
+    if (exact.length) {
+      exotic = pick(exact);
+    } else {
+      const loose = names.filter(n => subclassFits(exoticRule(n), sub.info));
+      if (!loose.length) throw new Error(`No eligible exotic works with ${sub.info.s.def.name}.`);
+      exotic = pick(loose);
+      log(`No exotic fits ${sub.info.s.def.name} as rolled; re-rolling its abilities and aspects for ${exotic}.`);
+      state.roll.subclass = await rollSubclass(cid, exotic, sub.info);
+    }
+    state.roll.armor = await rollArmor(rules, cls, exotic);
+    state.roll.armorClass = cls;
+  } else if (armor) {
     const { info, exotic } = await pickSubclassAndExotic(cid, cls);
     state.roll.armor = await rollArmor(rules, cls, exotic);
     state.roll.armorClass = cls;
@@ -1540,7 +1574,8 @@ function wire() {
   $("btnRollAll").onclick = () => busy(() => doRoll({ subclass: true, weapons: true, armor: true }));
   $("btnRollSubclass").onclick = () => busy(() => doRoll({ subclass: true }));
   $("btnRollWeapons").onclick = () => busy(() => doRoll({ weapons: true }));
-  $("btnRollArmor").onclick = () => busy(() => doRoll({ armor: true }));
+  $("btnRollArmor").onclick = () => busy(() => doRoll({ armor: "only" }));
+  $("btnRollArmorSub").onclick = () => busy(() => doRoll({ armor: true }));
   $("btnRefresh").onclick = () => busy(async () => { await loadProfile(); populateChars(); renderExoticList("w"); renderExoticList("a"); renderRoll(); });
   $("btnEquip").onclick = () => busy(equipRoll);
   $("charSelect").onchange = () => {
