@@ -449,7 +449,8 @@ async function ensureSocketData() {
   if (state.socketData) return;
   log("Loading subclass sockets…");
   const m = state.membership;
-  const r = await bungie(`/Destiny2/${m.type}/Profile/${m.id}/?components=305,310`);
+  // Inventory components included so Bungie returns sockets for vault and character items too (as DIM requests them).
+  const r = await bungie(`/Destiny2/${m.type}/Profile/${m.id}/?components=102,201,205,305,310`);
   state.socketData = {
     sockets: r.itemComponents?.sockets?.data || {},
     reusable: r.itemComponents?.reusablePlugs?.data || {},
@@ -1165,16 +1166,25 @@ function synergyText(name) {
 }
 
 /* Armor archetype names for the given items (from their sockets). */
+const ARCHETYPE_NAMES = new Set(["brawler", "bulwark", "grenadier", "gunner", "paragon", "powerhouse", "specialist"]);
+
 async function armorArchetypes(items) {
   await ensureSocketData();
   const sd = state.socketData;
   const hashes = [...new Set(items.flatMap(i => (sd.sockets[i.id]?.sockets || []).map(x => x.plugHash).filter(Boolean)))];
   await fetchEntities("p", hashes, slimPlug);
   const out = {};
+  const isArch = h => plugDef(h)?.ch === 778194869 || ARCHETYPE_NAMES.has(norm(plugName(h)));
   for (const i of items) {
-    const h = (sd.sockets[i.id]?.sockets || []).map(x => x.plugHash).find(x => plugDef(x)?.ch === 778194869);
+    const h = (sd.sockets[i.id]?.sockets || []).map(x => x.plugHash).find(isArch);
     if (h) out[i.id] = norm(plugName(h));
   }
+  const legend = items.filter(i => !isExo(i));
+  const withSockets = legend.filter(i => sd.sockets[i.id]).length;
+  const found = legend.filter(i => out[i.id]).length;
+  const counts = {};
+  for (const i of legend) if (out[i.id]) counts[out[i.id]] = (counts[out[i.id]] || 0) + 1;
+  log(`Archetypes: read sockets for ${withSockets} of ${legend.length} legendary pieces; ${found} have an archetype (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}).`);
   return out;
 }
 
