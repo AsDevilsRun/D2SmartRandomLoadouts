@@ -45,6 +45,26 @@
   h2.boxhead { display:flex; justify-content:space-between; align-items:center; gap:8px; }
   h2.boxhead button { text-transform:none; letter-spacing:0; }
   td.act { width:1%; white-space:nowrap; text-align:right; }
+  .toast-wrap { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:50; max-width:min(380px, calc(100vw - 32px)); }
+  .toast { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:8px; padding:10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.45); transition:opacity .4s; }
+  .toast.ok { border-left-color:var(--good); }
+  .toast.bad { border-left-color:var(--bad); }
+  .toast-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .toast-x { background:none; border:none; color:var(--dim); font-size:18px; padding:0 4px; cursor:pointer; }
+  .toast-phase { margin:2px 0 6px; font-size:13px; }
+  .toast-icons { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0; }
+  .toast-icons img { width:32px; height:32px; border-radius:3px; transition:opacity .2s, transform .2s; }
+  .toast-icons img.pending { opacity:.3; transform:scale(.8); }
+  .toast-icons img.fail { outline:2px solid var(--bad); }
+  .toast-msg { font-size:12px; margin-top:4px; }
+  .toast-msg.err { color:var(--bad); }
+  .toast-msg.warn { color:var(--accent); }
+  .rules-wrap { display:flex; gap:16px; align-items:flex-start; justify-content:space-between; }
+  .champs { border:1px solid var(--line); border-radius:6px; padding:4px 12px 8px; margin:0; display:flex; flex-direction:column; gap:4px; flex:none; }
+  .champs legend { color:var(--dim); font-size:12px; padding:0 4px; }
+  .champs label { white-space:nowrap; cursor:pointer; }
+  .icon-wrap { position:relative; width:36px; height:36px; }
+  .icon-wrap img.champ { position:absolute; bottom:-3px; width:16px; height:16px; border-radius:2px; background:#000; box-shadow:0 0 0 1px #000; }
   code { background:var(--bg); padding:1px 5px; border-radius:4px; }
 </style>
 </head>
@@ -73,14 +93,23 @@
 
     <div class="card">
       <h2>Rules</h2>
-      <div class="rules">
-        <label><input type="checkbox" data-rule="subclass"> Randomize subclass in "Roll all"</label>
-        <label><input type="checkbox" data-rule="noDoublePrimary"> No double primary</label>
-        <label><input type="checkbox" data-rule="noDoubleSpecial"> No double special</label>
-        <label><input type="checkbox" data-rule="guaranteedExoticWeapon"> Guaranteed exotic weapon</label>
-        <label><input type="checkbox" data-rule="guaranteedExoticArmor"> Guaranteed exotic armor</label>
-        <label><input type="checkbox" data-rule="mono"> Monochromatic</label>
-        <label><input type="checkbox" data-rule="unownedExotics"> Include unowned exotic weapons (pull from Collections)</label>
+      <div class="rules-wrap">
+        <div class="rules">
+          <label><input type="checkbox" data-rule="subclass"> Randomize subclass in "Roll all"</label>
+          <label><input type="checkbox" data-rule="noDoublePrimary"> No double primary</label>
+          <label><input type="checkbox" data-rule="noDoubleSpecial" data-excl="guaranteedDoubleSpecial"> No double special</label>
+          <label><input type="checkbox" data-rule="guaranteedDoubleSpecial" data-excl="noDoubleSpecial"> Guaranteed double special</label>
+          <label><input type="checkbox" data-rule="guaranteedExoticWeapon"> Guaranteed exotic weapon</label>
+          <label><input type="checkbox" data-rule="guaranteedExoticArmor"> Guaranteed exotic armor</label>
+          <label><input type="checkbox" data-rule="mono"> Monochromatic</label>
+          <label><input type="checkbox" data-rule="unownedExotics"> Include unowned exotic weapons (pull from Collections)</label>
+        </div>
+        <fieldset class="champs">
+          <legend>Champions</legend>
+          <label><input type="checkbox" data-rule="champBarrier"> Barrier</label>
+          <label><input type="checkbox" data-rule="champOverload"> Overload</label>
+          <label><input type="checkbox" data-rule="champUnstoppable"> Unstoppable</label>
+        </fieldset>
       </div>
     </div>
 
@@ -168,7 +197,7 @@ const ITEMTYPE_ARMOR = 2, ITEMTYPE_WEAPON = 3, ITEMTYPE_SUBCLASS = 16;
 const VAULT = "vault";
 const VAULT_BUCKET = 138197802;
 const CHAR_BUCKET_CAPACITY = 9;
-const DEFAULT_RULES = { unownedExotics: false, subclass: true, noDoublePrimary: true, noDoubleSpecial: true, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mono: false };
+const DEFAULT_RULES = { unownedExotics: false, subclass: true, noDoublePrimary: true, noDoubleSpecial: true, guaranteedDoubleSpecial: false, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mono: false };
 
 /* ---------- utilities ---------- */
 const $ = id => document.getElementById(id);
@@ -299,6 +328,8 @@ function slimPlug(d) {
     t: d.itemTypeDisplayName || "",
     k: (d.investmentStats || []).find(st => st.statTypeHash === 2223994109)?.value || d.plug?.energyCapacity?.capacityValue || 0,
     i: d.displayProperties?.icon || "",
+    b: d.breakerTypeHash || 0,
+    pk: d.perks ? d.perks.map(x => x.perkHash) : undefined,
   };
 }
 
@@ -319,6 +350,7 @@ function slimDefs(raw) {
       typeName: d.itemTypeDisplayName || "",
       dmg: d.defaultDamageType || 0,
       coll: d.collectibleHash || 0,
+      breaker: d.breakerTypeHash || 0,
     };
   }
   return { out, plugs };
@@ -328,6 +360,7 @@ async function loadDefs() {
   const man = await bungie("/Destiny2/Manifest/");
   state.manifestVersion = man.version;
   const paths = man.jsonWorldComponentContentPaths.en;
+  state.manifestPaths = paths;
   log("Downloading item definitions…");
   let slim = slimDefs(await (await fetch(BUNGIE + paths.DestinyInventoryItemLiteDefinition)).json());
   const hasAmmo = Object.values(slim.out).some(d => d.itemType === ITEMTYPE_WEAPON && d.ammo);
@@ -408,6 +441,7 @@ async function loadProfile() {
   for (const [cid, inv] of Object.entries(r.characterEquipment?.data || {})) for (const it of inv.items) add(it, cid, true);
   state.items = items;
   state.socketData = null;
+  state.champs = null;
   state.subInfo = {};
   log(`Inventory loaded: ${items.filter(i => i.def.itemType === ITEMTYPE_WEAPON).length} weapons, ${items.filter(i => i.def.itemType === ITEMTYPE_ARMOR).length} armor.`);
 }
@@ -417,7 +451,8 @@ async function ensureSocketData() {
   if (state.socketData) return;
   log("Loading subclass sockets…");
   const m = state.membership;
-  const r = await bungie(`/Destiny2/${m.type}/Profile/${m.id}/?components=305,310`);
+  // Inventory components included so Bungie returns sockets for vault and character items too (as DIM requests them).
+  const r = await bungie(`/Destiny2/${m.type}/Profile/${m.id}/?components=102,201,205,305,310`);
   state.socketData = {
     sockets: r.itemComponents?.sockets?.data || {},
     reusable: r.itemComponents?.reusablePlugs?.data || {},
@@ -599,13 +634,119 @@ function unownedExoticWeapons(off) {
   return Object.values(byName);
 }
 
+/* ---------- champions ----------
+   A weapon stuns a champion type if (as DIM decides it) its definition has a breaker type, a plugged perk or mod has one,
+   a plugged plug carries a breaker perk ("[Shield-Piercing]" / "[Disruption]" / "[Stagger]" in Bungie's perk names, plus DIM's
+   hand-kept list), or it is in DIM's extended-breaker list. Subclass verbs and artifact perks don't count. */
+const BREAKER = { barrier: 485622768, overload: 2611060930, unstoppable: 3178805705 };
+const CHAMP_RULES = { champBarrier: "barrier", champOverload: "overload", champUnstoppable: "unstoppable" };
+const CHAMP_LABEL = { barrier: "Barrier", overload: "Overload", unstoppable: "Unstoppable" };
+const BREAKER_PERK_LABELS = [[/\[shield-piercing\]/i, "barrier"], [/\[disruption\]/i, "overload"], [/\[stagger\]/i, "unstoppable"]];
+const DIM_BREAKER_PERKS = {2917776374:"unstoppable",164592134:"unstoppable",1134361550:"unstoppable",2084279142:"unstoppable",2612240126:"unstoppable",472686235:"overload",15807694:"overload",656925452:"overload",1478638730:"overload",2026681315:"overload",3033353825:"overload",4114351468:"overload",3469621377:"barrier",4000621756:"barrier",549294277:"barrier",1235808583:"barrier",1435986861:"barrier",1839099519:"barrier",3437929382:"barrier",3656570035:"barrier"};
+const DIM_EXTENDED_BREAKER = {17096506:3178805705,89619507:3178805705,449318888:485622768,503025963:485622768,511888814:2611060930,593808239:485622768,1003391927:485622768,1047932517:2611060930,1203306857:3178805705,1307844890:485622768,1351987111:3178805705,1443166262:485622768,1685137410:3178805705,1734844650:3178805705,1955548646:485622768,2110100341:3178805705,2415768376:3178805705,2474293653:485622768,2687811401:2611060930,2694576561:2611060930,3118061004:3178805705,3487253372:485622768,3598649636:485622768,3661051060:485622768,4029987901:2611060930,4095189811:485622768,4268030601:485622768};
+const champOfBreaker = h => Object.keys(BREAKER).find(k => BREAKER[k] === h) || null;
+const requiredChamps = rules => Object.entries(CHAMP_RULES).filter(([r]) => rules[r]).map(([, c]) => c);
+const champList = cs => cs.map(c => CHAMP_LABEL[c]).join(" + ");
+
+function defChamps(hash, def) {
+  const out = new Set();
+  const a = champOfBreaker(def?.breaker), b = champOfBreaker(DIM_EXTENDED_BREAKER[hash]);
+  if (a) out.add(a);
+  if (b) out.add(b);
+  return out;
+}
+const champsOf = i => (i.id && state.champs?.[i.id]) || defChamps(i.hash, i.def);
+
+/* Breaker perks by hash, from Bungie's perk names (one download per game update, then cached). */
+async function breakerPerkMap() {
+  entCache.open();
+  if (entCache.data.breakerPerks) return entCache.data.breakerPerks;
+  const out = { ...DIM_BREAKER_PERKS };
+  try {
+    log("Reading champion perk names…");
+    const all = await (await fetch(BUNGIE + state.manifestPaths.DestinySandboxPerkDefinition)).json();
+    for (const [h, d] of Object.entries(all)) {
+      const hit = BREAKER_PERK_LABELS.find(([re]) => re.test(d.displayProperties?.name || ""));
+      if (hit) out[h] = hit[1];
+    }
+  } catch (e) { log("Couldn't read perk names (" + e.message + "); using DIM's list only."); }
+  entCache.data.breakerPerks = out;
+  entCache.save();
+  return out;
+}
+
+async function ensureChampData() {
+  if (state.champs) return;
+  try {
+    const weapons = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON);
+    await ensureSocketData();
+    const sd = state.socketData;
+    const perks = await breakerPerkMap();
+    const plugged = i => (sd.sockets[i.id]?.sockets || []).map(x => x.plugHash).filter(Boolean);
+    const plugInfo = h => (state.plugDefs[h]?.pk ? state.plugDefs[h] : entCache.data["pp" + h]) || null;
+    const missing = [...new Set(weapons.flatMap(plugged))].filter(h => !plugInfo(h));
+    if (missing.length) await fetchEntities("pp", missing, d => ({ b: d.breakerTypeHash || 0, pk: (d.perks || []).map(p => p.perkHash) }));
+    const champs = {};
+    for (const i of weapons) {
+      const set = defChamps(i.hash, i.def);
+      for (const h of plugged(i)) {
+        const p = plugInfo(h);
+        if (!p) continue;
+        const c = champOfBreaker(p.b);
+        if (c) set.add(c);
+        for (const ph of p.pk || []) if (perks[ph]) set.add(perks[ph]);
+      }
+      champs[i.id] = set;
+    }
+    state.champs = champs;
+    await fetchEntities("bt", Object.values(BREAKER), d => d.displayProperties?.icon || "", "DestinyBreakerTypeDefinition");
+  } catch (e) {
+    log("Couldn't read champion data: " + e.message);
+    state.champs = {};
+  }
+}
+
+/* Pre-check before rolling: each required champion type needs at least one eligible weapon. */
+/* Take a weapon for each required champion type not yet covered. False if a type can't be covered with the open slots. */
+function takeChamps(champs, pool, picks, take, ammoOK, exoTaken, choose) {
+  for (const c of shuffle(champs)) {
+    if (Object.values(picks).some(i => champsOf(i).has(c))) continue;
+    const m = pool.filter(i => !picks[i.def.bucket] && champsOf(i).has(c) && ammoOK(i) && (!exoTaken() || !isExo(i)));
+    if (!m.length) return false;
+    take(choose(m));
+  }
+  return true;
+}
+
+function checkChampPool(rules, pool) {
+  const champs = requiredChamps(rules);
+  const none = champs.filter(c => !pool.some(i => champsOf(i).has(c)));
+  if (none.length) throw new Error(`No eligible weapon stuns ${champList(none)} champions.`);
+  return champs;
+}
+
+function champBadges(i) {
+  const cs = [...champsOf(i)];
+  return cs.map((c, k) => {
+    const img = document.createElement("img");
+    const icon = entCache.data["bt" + BREAKER[c]];
+    img.className = "champ";
+    img.style.right = (-3 + k * 14) + "px";
+    img.alt = CHAMP_LABEL[c];
+    img.title = "Stuns " + CHAMP_LABEL[c];
+    if (icon) img.src = BUNGIE + icon;
+    return img;
+  });
+}
+
 function weaponPool(rules, E) {
   const off = exoticOff("w");
   const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && i.def.ammo
     && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name)))
     && elementOK(i.def.bucket, i.dmg, E));
   if (rules.unownedExotics) pool.push(...unownedExoticWeapons(off).filter(v => elementOK(v.def.bucket, v.dmg, E)));
-  return pool;
+  // Guaranteed double special: kinetic and energy slots both take special-ammo weapons.
+  return rules.guaranteedDoubleSpecial ? pool.filter(i => i.def.bucket === BUCKET.POWER || i.def.ammo === 2) : pool;
 }
 
 /* Reroll one weapon slot, keeping the other two and all weapon rules. */
@@ -621,6 +762,11 @@ function rerollWeaponSlot(rules, E, bucket) {
     && !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1])
     && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]));
   if (rules.guaranteedExoticWeapon && !exoFixed) cands = cands.filter(isExo);
+  const champMissing = requiredChamps(rules).filter(c => !fixed.some(i => champsOf(i).has(c)));
+  if (champMissing.length) {
+    cands = cands.filter(i => champMissing.every(c => champsOf(i).has(c)));
+    if (!cands.length) throw new Error(`No ${SLOT_NAME[bucket]} weapon stuns ${champList(champMissing)} alongside the other two weapons.`);
+  }
   if (!cands.length) throw new Error(`No other ${SLOT_NAME[bucket]} weapon fits the rules with the other two weapons.`);
   const fresh = cands.filter(i => !old || i.def.name !== old.def.name);
   const p = pickByName(fresh.length ? fresh : cands);
@@ -632,12 +778,14 @@ function rollWeapons(rules, E) {
   if (rules.guaranteedExoticWeapon && !pool.some(isExo)) {
     throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
   }
-  for (let attempt = 0; attempt < 200; attempt++) {
+  const champs = checkChampPool(rules, pool);
+  for (let attempt = 0; attempt < 300; attempt++) {
     const picks = {}, ammo = { 1: 0, 2: 0, 3: 0 };
     let exo = false, ok = true;
     const take = i => { picks[i.def.bucket] = i; ammo[i.def.ammo]++; if (isExo(i)) exo = true; };
     const ammoOK = i => !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1]) && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]);
     if (rules.guaranteedExoticWeapon) take(pickByName(pool.filter(isExo)));
+    if (!takeChamps(champs, pool, picks, take, ammoOK, () => exo, pickByName)) continue;
     for (const b of shuffle(WEAPON_BUCKETS)) {
       if (picks[b]) continue;
       const p = pickByName(pool.filter(i => i.def.bucket === b && (!exo || !isExo(i)) && ammoOK(i)));
@@ -646,7 +794,7 @@ function rollWeapons(rules, E) {
     }
     if (ok) return WEAPON_BUCKETS.map(b => picks[b]);
   }
-  throw new Error("Couldn't build a weapon loadout that meets the rules" + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
+  throw new Error("Couldn't build a weapon loadout that meets the rules" + (champs.length ? ` stunning ${champList(champs)}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
 }
 
 function rollArmor(rules, cls) {
@@ -706,7 +854,14 @@ function locationLabel(i) {
 function itemRow(i, sub, action) {
   const tr = document.createElement("tr");
   const tdIcon = document.createElement("td");
-  if (i.def.icon) { const img = document.createElement("img"); img.src = BUNGIE + i.def.icon; img.alt = ""; tdIcon.append(img); }
+  if (i.def.icon) {
+    const img = document.createElement("img"); img.src = BUNGIE + i.def.icon; img.alt = "";
+    if (i.def.itemType === ITEMTYPE_WEAPON) {
+      const wrap = document.createElement("div"); wrap.className = "icon-wrap";
+      wrap.append(img, ...champBadges(i));
+      tdIcon.append(wrap);
+    } else tdIcon.append(img);
+  }
   const tdName = document.createElement("td");
   tdName.textContent = i.def.name;
   if (isExo(i)) tdName.className = "exotic";
@@ -975,48 +1130,123 @@ function verifySubclass(r) {
   for (const h of [...r.aspects, ...r.fragments]) if (!curSet.has(h)) problems.push(`${plugName(h)}${why(h)}`);
   if (problems.length) log("Subclass — not applied: " + problems.join("; "));
   else log(`Subclass applied: ${r.info.s.def.name}.`);
+  return problems;
+}
+
+/* ---------- apply notification (modelled on DIM's loadout notification) ---------- */
+function makeToast(title) {
+  let wrap = document.querySelector(".toast-wrap");
+  if (!wrap) { wrap = document.createElement("div"); wrap.className = "toast-wrap"; document.body.append(wrap); }
+  const el = document.createElement("div"); el.className = "toast";
+  const head = document.createElement("div"); head.className = "toast-head";
+  const t = document.createElement("b"); t.textContent = title;
+  const x = document.createElement("button"); x.className = "toast-x"; x.textContent = "×"; x.title = "Dismiss"; x.onclick = () => el.remove();
+  head.append(t, x);
+  const phase = document.createElement("div"); phase.className = "toast-phase muted";
+  const rows = document.createElement("div");
+  const msgs = document.createElement("div");
+  el.append(head, phase, rows, msgs);
+  wrap.append(el);
+  const imgs = {};
+  return {
+    phase(text) { phase.textContent = text; },
+    icons(list) {
+      const row = document.createElement("div"); row.className = "toast-icons";
+      for (const it of list) {
+        const img = document.createElement("img");
+        img.src = it.icon ? BUNGIE + it.icon : ""; img.alt = ""; img.title = it.name; img.className = "pending";
+        imgs[it.key] = img; row.append(img);
+      }
+      if (list.length) rows.append(row);
+    },
+    mark(key, ok) { const img = imgs[key]; if (img) img.className = ok ? "" : "fail"; },
+    note(text, kind) { const d = document.createElement("div"); d.className = "toast-msg " + (kind || ""); d.textContent = text; msgs.append(d); },
+    done(problems) {
+      if (problems.length) {
+        el.classList.add("bad"); t.textContent = title.replace(/…$/, "") + " — finished with problems";
+        phase.textContent = "Failed";
+        const locked = problems.some(p => /AtThisLocation|CannotPerformAction/i.test(p));
+        if (locked) this.note("The game won't change gear here. Go to orbit or a social space and equip again.", "warn");
+        this.note(`${problems.length} problem${problems.length === 1 ? "" : "s"}: ` + problems.join("; "), "err");
+      } else {
+        el.classList.add("ok"); t.textContent = title.replace(/…$/, "") + " — applied";
+        phase.textContent = "Succeeded";
+        setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 450); }, 6000);
+      }
+    },
+  };
 }
 
 async function equipRoll() {
   const cid = selectedChar();
   const cls = selectedClass();
-  let subApplied = false;
-  if (state.roll.subclass) {
-    if (state.roll.subclass.charId === cid) {
-      try { await applySubclass(state.roll.subclass); subApplied = true; } catch (e) { log("Subclass error: " + e.message); }
-    } else log("Subclass roll is for a different character; skipping subclass.");
-  }
+  const toast = makeToast(`Applying to ${CLASS_NAME[cls]}…`);
+  const problems = [];
+  const sub = state.roll.subclass && state.roll.subclass.charId === cid ? state.roll.subclass : null;
+  if (state.roll.subclass && !sub) log("Subclass roll is for a different character; skipping subclass.");
   const weapons = state.roll.weapons || [];
   let armor = state.roll.armor || [];
   if (armor.length && state.roll.armorClass !== cls) {
     log("Armor roll is for a different class; skipping armor.");
     armor = [];
   }
-  for (const v of weapons.filter(i => i.virtual)) log(`${v.def.name} isn't in your inventory — pull it from Collections, then equip it.`);
+  const virtual = weapons.filter(i => i.virtual);
   const roll = [...weapons, ...armor].filter(i => !i.virtual);
-  if (roll.length) {
-    const protectedIds = new Set(roll.map(i => i.id));
-    for (const it of roll) {
-      if (it.owner === cid) continue;
-      if (it.equipped) await dequip(it, protectedIds);
-      if (it.owner !== VAULT) { log(`${it.def.name} → vault`); await transfer(it, true, it.owner); }
-      await makeRoom(cid, it.def.bucket, protectedIds);
-      log(`${it.def.name} → ${CLASS_NAME[cls]}`);
-      await transfer(it, false, cid);
-    }
-    // Legendaries first so a currently equipped exotic is replaced before the new exotic goes on.
-    for (const group of [roll.filter(i => !isExo(i)), roll.filter(isExo)]) {
-      try { await equipSet(cid, group); } catch (e) { log("Equip request error: " + e.message); }
-    }
+  toast.icons([
+    ...(sub ? [{ key: "subclass", icon: sub.info.s.def.icon, name: sub.info.s.def.name }] : []),
+    ...roll.map(i => ({ key: i.id, icon: i.def.icon, name: i.def.name })),
+  ]);
+  for (const v of virtual) {
+    log(`${v.def.name} isn't in your inventory — pull it from Collections, then equip it.`);
+    toast.note(`Pull ${v.def.name} from Collections, then equip it.`, "warn");
   }
-  await loadProfile();
-  const byId = new Map(state.items.map(i => [i.id, i]));
-  const failed = roll.filter(i => { const f = byId.get(i.id); return !f || f.owner !== cid || !f.equipped; });
-  if (failed.length) log("Not equipped: " + failed.map(i => i.def.name).join(", "));
-  else if (roll.length) log("Weapons/armor verified.");
-  if (subApplied) verifySubclass(state.roll.subclass);
-  state.roll.weapons = state.roll.weapons?.map(i => byId.get(i.id) || i) || null;
-  state.roll.armor = state.roll.armor?.map(i => byId.get(i.id) || i) || null;
+  let subErr = null;
+  try {
+    if (sub) {
+      toast.phase("Applying subclass");
+      try { await applySubclass(sub); } catch (e) { subErr = e.message; log("Subclass error: " + e.message); }
+    }
+    if (roll.length) {
+      toast.phase("Moving items");
+      const protectedIds = new Set(roll.map(i => i.id));
+      for (const it of roll) {
+        if (it.owner === cid) continue;
+        try {
+          if (it.equipped) await dequip(it, protectedIds);
+          if (it.owner !== VAULT) { log(`${it.def.name} → vault`); await transfer(it, true, it.owner); }
+          await makeRoom(cid, it.def.bucket, protectedIds);
+          log(`${it.def.name} → ${CLASS_NAME[cls]}`);
+          await transfer(it, false, cid);
+        } catch (e) { problems.push(`${it.def.name}: ${e.message}`); toast.mark(it.id, false); }
+      }
+      toast.phase("Equipping items");
+      // Legendaries first so a currently equipped exotic is replaced before the new exotic goes on.
+      for (const group of [roll.filter(i => !isExo(i)), roll.filter(isExo)]) {
+        try { await equipSet(cid, group); } catch (e) { problems.push("Equip: " + e.message); }
+      }
+    }
+    toast.phase("Checking");
+    await loadProfile();
+    const byId = new Map(state.items.map(i => [i.id, i]));
+    for (const i of roll) {
+      const f = byId.get(i.id);
+      const ok = !!(f && f.owner === cid && f.equipped);
+      toast.mark(i.id, ok);
+      if (!ok && !problems.some(p => p.startsWith(i.def.name + ":"))) problems.push(`${i.def.name} not equipped`);
+    }
+    if (roll.length && problems.length === 0) log("Weapons/armor verified.");
+    else if (problems.length) log("Not equipped: " + problems.join("; "));
+    if (sub) {
+      const sp = subErr ? [subErr] : verifySubclass(sub) || [];
+      toast.mark("subclass", !sp.length);
+      problems.push(...sp.map(p => "Subclass: " + p));
+    }
+    state.roll.weapons = state.roll.weapons?.map(i => byId.get(i.id) || i) || null;
+    state.roll.armor = state.roll.armor?.map(i => byId.get(i.id) || i) || null;
+  } catch (e) {
+    problems.push(e.message);
+  }
+  toast.done(problems);
   renderRoll();
 }
 
@@ -1042,12 +1272,14 @@ async function weaponElement(cid) {
 }
 
 async function rerollOne(bucket) {
+  await ensureChampData();
   const E = await weaponElement(selectedChar());
   state.roll.weapons = rerollWeaponSlot(state.rules, E, bucket);
   renderRoll();
 }
 
 async function doRoll({ subclass, weapons, armor }) {
+  if (weapons) await ensureChampData();
   const cid = selectedChar();
   const rules = state.rules;
   if (subclass) state.roll.subclass = await rollSubclass(cid);
@@ -1081,10 +1313,13 @@ function wire() {
     try { await navigator.clipboard.writeText(v); log("DIM search copied."); }
     catch { $("dimString").select(); log("Clipboard blocked; text selected for manual copy."); }
   };
+  if (state.rules.noDoubleSpecial && state.rules.guaranteedDoubleSpecial) state.rules.guaranteedDoubleSpecial = false;
   for (const cb of document.querySelectorAll("[data-rule]")) {
     cb.checked = !!state.rules[cb.dataset.rule];
     cb.onchange = () => {
       state.rules[cb.dataset.rule] = cb.checked;
+      const other = cb.dataset.excl && document.querySelector(`[data-rule="${cb.dataset.excl}"]`);
+      if (other && cb.checked) { other.checked = false; state.rules[cb.dataset.excl] = false; }
       store.set("d2r_rules", state.rules);
       if (state.defs) renderExoticList("w");
     };
