@@ -81,6 +81,7 @@
         <label><input type="checkbox" data-rule="unownedExotics"> Include unowned exotic weapons (pull from Collections)</label>
         <label><input type="checkbox" data-rule="mods"> Apply mods</label>
       </div>
+      <div id="sheetStatus" class="muted" style="margin-top:8px">Synergy sheet: loading…</div>
     </div>
 
     <div class="grid">
@@ -843,9 +844,13 @@ async function loadSheet() {
       for (const r of parseCSV(await b.text()).slice(1)) if ((r[0] || "").trim()) state.focusMap[norm(r[0])] = splitList(r[1]).map(norm);
     }
     log(`Synergy sheet loaded (${Object.keys(sheet).length} exotics, ${Object.keys(state.focusMap).length} focus mappings).`);
+    $("sheetStatus").textContent = `Synergy sheet: loaded (${Object.keys(sheet).length} exotics, ${Object.keys(state.focusMap).length} focus mappings)`;
+    $("sheetStatus").style.color = "";
   } catch (e) {
     state.sheet = null;
     log("Couldn't load your synergy sheet; using DIM's data instead: " + e.message);
+    $("sheetStatus").textContent = "Synergy sheet: NOT loaded — using DIM's data (" + e.message + ")";
+    $("sheetStatus").style.color = "var(--bad)";
   }
 }
 
