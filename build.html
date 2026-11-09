@@ -660,13 +660,35 @@ function weaponNeed(soft = false) {
   const types = [], names = [];
   const exo = state.roll.armorClass === selectedClass() ? (state.roll.armor || []).find(isExo) : null;
   const rule = exo ? exoticRule(exo.def.name) : null;
-  if (rule && (rule.forceWeapon !== false) !== soft) { types.push(...(rule.weaponTypes || [])); names.push(...(rule.weapons || [])); }
-  if (!types.length && !names.length) return null;
-  return { types: types.map(norm), names: names.map(norm), label: [...types, ...names].join(" / ") };
+  let el = 0, elLabel = "";
+  if (rule && (rule.forceWeapon !== false) !== soft) {
+    types.push(...(rule.weaponTypes || []));
+    names.push(...(rule.weapons || []));
+    const src = rule.weaponElement || WEAPON_ELEMENT_DEFAULT[norm(rule.name || exo.def.name)] || "";
+    el = src ? rolledAbilityElement(src) : 0;
+    if (el) elLabel = `a ${DMG_NAME[el]} weapon (matches your ${src})`;
+  }
+  if (!types.length && !names.length && !el) return null;
+  return { types: types.map(norm), names: names.map(norm), el, label: [...types, ...names, ...(elLabel ? [elLabel] : [])].join(" / ") };
 }
+
+/* Element of the rolled grenade / melee / super / subclass ("Weapon element" sheet column). 0 if unknown. */
+const WEAPON_ELEMENT_DEFAULT = { "verity's brow": "grenade", "mantle of battle harmony": "super", "mantle of battle-harmony": "super" };
+function rolledAbilityElement(src) {
+  const sub = state.roll.subclass && state.roll.subclass.charId === selectedChar() ? state.roll.subclass : null;
+  if (!sub) return 0;
+  const subEl = typeof sub.element === "number" ? sub.element : 0; // rolled subclass element (Prismatic: the super's)
+  if (src === "subclass" || src === "super") return subEl;
+  const kind = { grenade: "grenades", melee: "melee" }[src];
+  const a = kind && sub.abilities.find(x => x.kind === kind);
+  return (a && ABILITY_EL[norm(plugName(a.hash))]) || (isPrismaticRoll(sub) ? 0 : subEl);
+}
+
+const isPrismaticRoll = sub => /prismatic/i.test(sub.info?.s?.def?.name || "");
 
 function meetsNeed(i, need) {
   if (!need) return true;
+  if (need.el && i.dmg === need.el) return true;
   const t = norm(i.def.typeName || ""), n = norm(i.def.name);
   return need.names.includes(n) || need.types.some(x => t === x || t.endsWith(" " + x) || x.endsWith(" " + t) || t === x.replace(/s$/, ""));
 }
@@ -1069,6 +1091,7 @@ async function loadSheet() {
         prismNeeds: splitList(get(r, "Prismatic needs")), focus: splitList(get(r, "Focus")),
         weaponTypes: splitList(get(r, "Weapon types")), weapons: splitList(get(r, "Weapons")),
         forceWeapon: (get(r, "Force weapon") || get(r, "Force weapons")).toUpperCase() !== "N",
+        weaponElement: norm(get(r, "Weapon element")),
       };
     }
     state.sheet = sheet;
