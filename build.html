@@ -661,7 +661,10 @@ function weaponNeed(soft = false) {
   const exo = state.roll.armorClass === selectedClass() ? (state.roll.armor || []).find(isExo) : null;
   const rule = exo ? exoticRule(exo.def.name) : null;
   let el = 0, elLabel = "";
-  if (rule && (rule.forceWeapon !== false) !== soft) {
+  const sub = state.roll.subclass && state.roll.subclass.charId === selectedChar() ? state.roll.subclass : null;
+  // Or-weapon rows: required only when the rolled subclass doesn't meet the row; otherwise just more likely.
+  const forced = rule?.orWeapon ? !(sub && fitsRolledSubclass(rule, sub)) : rule?.forceWeapon !== false;
+  if (rule && forced !== soft) {
     types.push(...(rule.weaponTypes || []));
     names.push(...(rule.weapons || []));
     const src = rule.weaponElement || WEAPON_ELEMENT_DEFAULT[norm(rule.name || exo.def.name)] || "";
@@ -929,7 +932,8 @@ async function rollSubclass(cid, exoticName, chosenInfo) {
 
   // Force one pick per requirement group from the synergy rules.
   const forced = {}, forcedAspects = [];
-  if (rule) {
+  if (rule && !strictSubclassFits(rule, info)) log(`${info.s.def.name} doesn't meet ${exoticName}'s subclass rules; it rolls freely and ${[...rule.weaponTypes, ...rule.weapons].join(" / ")} is required instead.`);
+  else if (rule) {
     for (const g of ruleGroups(rule, info)) {
       if ([...Object.values(forced), ...forcedAspects].some(h => plugMeets(h, g))) continue;
       const opts = abilityIdx.filter(idx => !(idx in forced)).flatMap(idx => info.choices(idx).filter(h => plugMeets(h, g)).map(h => ({ idx, h })));
@@ -1092,6 +1096,7 @@ async function loadSheet() {
         weaponTypes: splitList(get(r, "Weapon types")), weapons: splitList(get(r, "Weapons")),
         forceWeapon: (get(r, "Force weapon") || get(r, "Force weapons")).toUpperCase() !== "N",
         weaponElement: norm(get(r, "Weapon element")),
+        orWeapon: /^y/i.test(get(r, "Or weapon")),
       };
     }
     state.sheet = sheet;
@@ -1145,7 +1150,18 @@ function plugMeets(h, g) {
   return el ? g.element.has(el) : (["grenades", "melee"].includes(plugKind(h)) && g.element.has(plugElement(h)));
 }
 
+/* "Or weapon" rows: any subclass works as long as the row's weapon is also rolled (forced when the subclass doesn't meet the row). */
+function orWeaponReady(rule) {
+  if (!rule?.orWeapon || !(rule.weaponTypes?.length || rule.weapons?.length)) return false;
+  const need = { types: rule.weaponTypes.map(norm), names: rule.weapons.map(norm) };
+  return weaponPool(state.rules, 0).some(i => meetsNeed(i, need));
+}
+
 function subclassFits(rule, info) {
+  return strictSubclassFits(rule, info) || orWeaponReady(rule);
+}
+
+function strictSubclassFits(rule, info) {
   if (info.element === "prism") {
     const agnostic = !elementalOnly(rule.elements).length && !hasReqs(rule);
     if (rule.prism !== "Y" && !rule.elements.includes("prism") && !agnostic) return false;
@@ -1189,6 +1205,7 @@ function synergyText(name) {
   parts.push(r.elements.length ? r.elements.map(e => e === "prism" ? "Prismatic" : DMG_NAME[e]).join(", ") : "Any element");
   for (const l of [r.supers, r.grenades, r.melees, r.classAbilities, r.movement, r.aspects]) if (l.length) parts.push(l.join(" / "));
   if (!(r.elements.length === 1 && r.elements[0] === "prism")) parts.push(r.prism === "Y" || r.elements.includes("prism") || (!elementalOnly(r.elements).length && !hasReqs(r)) ? "Prismatic OK" : "No Prismatic");
+  if (r.orWeapon) parts.push(`or any subclass with ${[...r.weaponTypes, ...r.weapons].join(" / ")}`);
   if (r.focus.length) parts.push("Focus: " + r.focus.join(", "));
   return parts.join(" · ") + (r.source === "DIM" ? " (DIM data)" : "");
 }
@@ -1825,17 +1842,35 @@ async function weaponElement(cid) {
   return await equippedElement(cid);
 }
 
-/* Subclass first (equal odds among subclasses at least one eligible exotic works with), then an exotic that fits it. */
+/* Exotic first (equal odds among your eligible exotics that work with at least one subclass), then a subclass it works with. */
 async function pickSubclassAndExotic(cid, cls) {
   const infos = await getSubclassInfo(cid);
   const off = exoticOff("a");
   const names = [...new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && isExo(i) && !off.has(i.def.name)).map(i => i.def.name))];
   if (!names.length) throw new Error(`No eligible exotic armor for ${CLASS_NAME[cls]} (check the exotic list).`);
-  const options = infos.map(info => ({ info, names: names.filter(n => subclassFits(exoticRule(n), info)) })).filter(o => o.names.length);
+  const options = names.map(n => ({ n, infos: infos.filter(info => subclassFits(exoticRule(n), info)) })).filter(o => o.infos.length);
   if (!options.length) { log("No exotic fits any subclass; rolling without synergy."); return { info: null, exotic: pick(names) }; }
   const o = pick(options);
-  log(`${o.info.s.def.name}: ${o.names.length} of your exotics fit (${options.length} subclasses have at least one).`);
-  return { info: o.info, exotic: pick(o.names) };
+  const w = balanceSubclassWeights(options, infos);
+  log(`${o.n}: works with ${o.infos.map(i => i.s.def.name).join(", ")} (${options.length} of your exotics fit a subclass).`);
+  return { info: weightedPick(o.infos, i => w.get(i)), exotic: o.n };
+}
+
+/* Subclass weights so that, with every exotic equally likely, each subclass comes up as evenly as your exotics allow.
+   An exotic's subclass is drawn in proportion to these weights among the subclasses it works with, so
+   subclass-agnostic exotics lean toward the subclasses few exotics support, and away from crowded ones (often Prismatic). */
+function balanceSubclassWeights(options, infos) {
+  const w = new Map(infos.map(i => [i, 1]));
+  const target = 1 / infos.filter(i => options.some(o => o.infos.includes(i))).length;
+  for (let it = 0; it < 200; it++) {
+    const share = new Map(infos.map(i => [i, 0]));
+    for (const o of options) {
+      const total = o.infos.reduce((sum, i) => sum + w.get(i), 0);
+      for (const i of o.infos) share.set(i, share.get(i) + w.get(i) / total / options.length);
+    }
+    for (const i of infos) if (share.get(i) > 0) w.set(i, w.get(i) * Math.sqrt(target / share.get(i)));
+  }
+  return w;
 }
 
 async function rerollOne(bucket) {
@@ -1862,7 +1897,7 @@ async function doRoll({ subclass, weapons, armor }) {
       const need = r.forceWeapon !== false && (r.weaponTypes?.length || r.weapons?.length) ? { types: r.weaponTypes.map(norm), names: r.weapons.map(norm) } : null;
       return !need || !state.roll.weapons || state.roll.weapons.some(i => meetsNeed(i, need));
     };
-    let exact = names.filter(n => fitsRolledSubclass(exoticRule(n), sub));
+    let exact = names.filter(n => fitsRolledSubclass(exoticRule(n), sub) || orWeaponReady(exoticRule(n)));
     if (exact.some(weaponsOK)) exact = exact.filter(weaponsOK);
     let exotic;
     if (exact.length) {
