@@ -938,11 +938,47 @@ function rollWeapons(rules, E) {
 }
 
 /* Exotic first, then any set-bonus pieces, then random legendaries for the rest. Runs after weapons so set bonuses can weigh them. */
+/* Raids by name: Collections often names the raid without the word "raid" (e.g. "Source: Root of Nightmares"). */
+const RAID_NAMES = ["raid", "leviathan", "eater of worlds", "spire of stars", "last wish", "scourge of the past", "crown of sorrow",
+  "garden of salvation", "deep stone crypt", "vault of glass", "vow of the disciple", "king's fall", "root of nightmares",
+  "crota's end", "salvation's edge", "desert perpetual", "pantheon"];
+
+/* Old raid armor: no archetype (from before Armor 3.0) and a raid as its Collections source. */
+async function oldRaidArmor(items) {
+  try {
+    if (!state.sources) {
+      log("Downloading Collections sources…");
+      const raw = await (await fetch(BUNGIE + state.manifestPaths.DestinyCollectibleDefinition)).json();
+      const byColl = {}, byItem = {}, byName = {};
+      for (const [h, d] of Object.entries(raw)) {
+        const src = d.sourceString || "";
+        byColl[h] = src;
+        if (d.itemHash) byItem[d.itemHash] = src;
+        const n = norm(d.displayProperties?.name || "");
+        if (n && src && !byName[n]) byName[n] = src;
+      }
+      state.sources = { byColl, byItem, byName };
+    }
+    const arch = await armorArchetypes(items, true);
+    const src = i => state.sources.byColl[i.def.coll] || state.sources.byItem[i.hash] || state.sources.byName[norm(i.def.name)] || "";
+    // Only pieces whose sockets were read can be judged (no socket data isn't "no archetype").
+    const out = new Set(items.filter(i => state.socketData.sockets[i.id] && !arch[i.id] && RAID_NAMES.some(r => norm(src(i)).includes(r))).map(i => i.id));
+    if (out.size) log(`Avoiding ${out.size} old raid armor pieces.`);
+    return out;
+  } catch (e) {
+    log("Couldn't check for old raid armor: " + e.message);
+    return new Set();
+  }
+}
+
 async function rollArmor(rules, cls, exoticName) {
   const off = exoticOff("a");
   const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls
     && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name))));
-  const legendaries = pool.filter(i => !isExo(i));
+  const allLegendaries = pool.filter(i => !isExo(i));
+  // Avoid old raid armor (from a raid, from before archetypes) unless a slot has nothing else.
+  const oldRaid = await oldRaidArmor(allLegendaries);
+  const legendaries = allLegendaries.filter(i => !oldRaid.has(i.id) || !allLegendaries.some(j => j.def.bucket === i.def.bucket && !oldRaid.has(j.id)));
   const exoName = exoticName || pickByName(pool.filter(isExo))?.def.name;
   if (!exoName) throw new Error(`No eligible exotic armor for ${CLASS_NAME[cls]} (check the exotic list).`);
   const fa = await focusArchetypes({ def: { name: exoName } }, pool, true);
@@ -1342,9 +1378,9 @@ function synergyText(name) {
 }
 
 /* Armor archetype names for the given items (from their sockets). */
-const ARCHETYPE_NAMES = new Set(["brawler", "bulwark", "grenadier", "gunner", "paragon", "powerhouse", "specialist"]);
+const ARCHETYPE_NAMES = new Set(["brawler", "bulwark", "demolitionist", "grenadier", "gunner", "paragon", "powerhouse", "reaver", "siegebreaker", "skirmisher", "specialist"]);
 
-async function armorArchetypes(items) {
+async function armorArchetypes(items, quiet = false) {
   await ensureSocketData();
   const sd = state.socketData;
   const hashes = [...new Set(items.flatMap(i => (sd.sockets[i.id]?.sockets || []).map(x => x.plugHash).filter(Boolean)))];
@@ -1360,7 +1396,7 @@ async function armorArchetypes(items) {
   const found = legend.filter(i => out[i.id]).length;
   const counts = {};
   for (const i of legend) if (out[i.id]) counts[out[i.id]] = (counts[out[i.id]] || 0) + 1;
-  log(`Archetypes: read sockets for ${withSockets} of ${legend.length} legendary pieces; ${found} have an archetype (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}).`);
+  if (!quiet) log(`Archetypes: read sockets for ${withSockets} of ${legend.length} legendary pieces; ${found} have an archetype (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}).`);
   return out;
 }
 
