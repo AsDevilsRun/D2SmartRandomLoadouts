@@ -385,13 +385,15 @@ function rollWeapons(rules, E) {
 /* ---------- exotic weapon balancing ----------
    Each exotic weapon gets a factor so that, within a class, every exotic comes up equally often over many "Roll all" presses,
    while tags and the synergy rules still decide which builds it lands on (the same idea as balanceSubclassWeights).
-   The factors come from simulating BALANCE_BUILDS builds (exotic armor, subclass, aspects, fragments; nothing equipped),
-   counting every exotic weapon in the game as owned. They are cached in the browser and recomputed only when the class,
+   The factors come from simulating builds (subclass, aspects, fragments; nothing equipped) for every exotic armor piece in turn,
+   BALANCE_BUILDS_PER_ARMOR each. "Roll all" picks every eligible piece with equal odds, so equal counts match real rolls, and a
+   piece that forces a weapon (Necrotic Grip, Triton Vice, Stronghold) is never short of samples. Every exotic weapon in the game
+   counts as owned. They are cached in the browser and recomputed only when the class,
    the data files, the rules, the exotic armor list or the inventory change.
    Weapons a sheet row names directly (Still Hunt for Celestial Nighthawk, Thorn and Osteo Striga for Necrotic Grip) are
    picked before any weighting, so balancing can only lower their other appearances. */
-const BALANCE_BUILDS = 400;
-const BALANCE_VERSION = 1;
+const BALANCE_BUILDS_PER_ARMOR = 20;   // simulated builds for each exotic armor piece (stratified: every piece gets the same number)
+const BALANCE_VERSION = 2;
 const wbal = { key: "", f: null };   // current factors, by normalized exotic name
 let wbalRaw = false;                 // true while simulating: weights without factors
 const balanceFactor = i => {
@@ -480,13 +482,18 @@ async function ensureWeaponBalance(cid, cls) {
   wbalRaw = true;
   try {
     log = () => {};
-    for (let k = 0; k < BALANCE_BUILDS; k++) {
-      const { info, exotic } = await pickSubclassAndExotic(cid, cls);
-      const sub = await rollSubclass(cid, exotic, info);
-      const exo = state.items.find(i => isExo(i) && i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && i.def.name === exotic);
-      state.roll.subclass = sub; state.roll.armor = exo ? [exo] : []; state.roll.armorClass = cls;
-      const E = await weaponElement(cid);
-      builds.push(buildOdds(state.rules, E, new Set(sub.tags || []), index));
+    const { infos, options } = await subclassOptions(cid, cls);
+    if (!options.length) throw new Error("no exotic armor fits a subclass");
+    const w = balanceSubclassWeights(options, infos);
+    for (const o of options) {
+      const odds = subclassOdds(o.rule, o.infos, w);
+      const exo = state.items.find(i => isExo(i) && i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && i.def.name === o.n);
+      for (let k = 0; k < BALANCE_BUILDS_PER_ARMOR; k++) {
+        const sub = await rollSubclass(cid, o.n, weightedPick(o.infos, i => odds.get(i)));
+        state.roll.subclass = sub; state.roll.armor = exo ? [exo] : []; state.roll.armorClass = cls;
+        const E = await weaponElement(cid);
+        builds.push(buildOdds(state.rules, E, new Set(sub.tags || []), index));
+      }
     }
   } catch (e) {
     log = quietLog;
@@ -508,7 +515,7 @@ async function ensureWeaponBalance(cid, cls) {
   wbal.key = key; wbal.f = out;
   await idb.prune(`wbal${BALANCE_VERSION}_${cls}_`, key);
   await idb.set(key, out);
-  log(`Exotic weapons balanced for ${CLASS_NAME[cls]} (${n} exotics, ${BALANCE_BUILDS} simulated builds, ${Math.round(performance.now() - t0)} ms).` +
+  log(`Exotic weapons balanced for ${CLASS_NAME[cls]} (${n} exotics, ${builds.length} simulated builds, ${Math.round(performance.now() - t0)} ms).` +
     (hi.length ? ` Above even odds because a synergy row names them: ${hi.map(([nm, x]) => `${nm} ${(100 * x).toFixed(2)}%`).join(", ")}.` : ""));
 }
 
@@ -1256,12 +1263,18 @@ function subclassOdds(rule, infos, w) {
   return norm1(infos);
 }
 
-async function pickSubclassAndExotic(cid, cls) {
+/* The class's eligible exotic armor, each with the subclasses it works with. */
+async function subclassOptions(cid, cls) {
   const infos = await getSubclassInfo(cid);
   const off = exoticOff("a");
   const names = [...new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && isExo(i) && !off.has(i.def.name)).map(i => i.def.name))];
   if (!names.length) throw new Error(`No eligible exotic armor for ${CLASS_NAME[cls]} (check the exotic list).`);
   const options = names.map(n => ({ n, rule: exoticRule(n), infos: infos.filter(info => subclassFits(exoticRule(n), info)) })).filter(o => o.infos.length);
+  return { infos, names, options };
+}
+
+async function pickSubclassAndExotic(cid, cls) {
+  const { infos, names, options } = await subclassOptions(cid, cls);
   if (!options.length) { log("No exotic fits any subclass; rolling without synergy."); return { info: null, exotic: pick(names) }; }
   const o = pick(options);
   const w = balanceSubclassWeights(options, infos);
