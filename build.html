@@ -538,7 +538,8 @@ async function rollSubclass(cid, exoticName, chosenInfo) {
   if (!infos.length) throw new Error("Couldn't read subclasses for this character.");
   const { cands, rule, why } = synergyCandidates(infos, exoticName);
   if (why) log(why);
-  const info = chosenInfo && cands.includes(chosenInfo) ? chosenInfo : pick(cands);
+  const odds = subclassOdds(rule, cands, null);
+  const info = chosenInfo && cands.includes(chosenInfo) ? chosenInfo : weightedPick(cands, i => odds.get(i));
   const ctx = buildContext(exoticName);
   if (ctx.tags.size || ctx.mentions.size) log(`Weighting for ${exoticName}: ${[...ctx.tags].join(", ") || "—"}${ctx.mentions.size ? " · mentions " + [...ctx.mentions].join(", ") : ""}`);
   if (!info.groups.supers.length && !info.groups.abilities.length) log(`${info.s.def.name}: couldn't read its sockets; only the subclass itself will change.`);
@@ -780,6 +781,7 @@ async function loadSheet() {
         forceWeapon: (get(r, "Force weapon") || get(r, "Force weapons")).toUpperCase() !== "N",
         weaponElement: norm(get(r, "Weapon element")),
         orWeapon: /^y/i.test(get(r, "Or weapon")),
+        orWeaponShare: parseShare(get(r, "Or weapon share"), OR_WEAPON_SHARE),
       };
     }
     state.sheet = sheet;
@@ -1086,17 +1088,47 @@ async function applyMods(plans, cid) {
   else log("Mods applied.");
 }
 
+/* Or-weapon rows: share of rolls that take a subclass the row doesn't meet (and so require the weapon instead).
+   "Or weapon share" in the sheet sets it per row: 20%, 0.2 and 20 all mean one roll in five. */
+const OR_WEAPON_SHARE = 0.2;
+function parseShare(v, dflt) {
+  const t = String(v || "").trim();
+  if (!t) return dflt;
+  let x = parseFloat(t);
+  if (isNaN(x)) return dflt;
+  if (t.endsWith("%") || x > 1) x /= 100;
+  return Math.min(1, Math.max(0, x));
+}
+
+/* Odds of each subclass for one exotic, given subclass weights w. For an Or-weapon row whose rule some subclasses meet,
+   the ones that don't meet it share orWeaponShare of the rolls and the rest share what is left; otherwise odds follow w. */
+function subclassOdds(rule, infos, w) {
+  const wt = i => (w ? w.get(i) : 1) || 0;
+  const norm1 = list => { const t = list.reduce((s, i) => s + wt(i), 0); return new Map(list.map(i => [i, t > 0 ? wt(i) / t : 1 / list.length])); };
+  if (rule?.orWeapon && orWeaponReady(rule)) {
+    const strict = infos.filter(i => strictSubclassFits(rule, i)), loose = infos.filter(i => !strict.includes(i));
+    if (strict.length && loose.length) {
+      const p = rule.orWeaponShare ?? OR_WEAPON_SHARE, out = new Map();
+      for (const [i, x] of norm1(strict)) out.set(i, x * (1 - p));
+      for (const [i, x] of norm1(loose)) out.set(i, x * p);
+      return out;
+    }
+  }
+  return norm1(infos);
+}
+
 async function pickSubclassAndExotic(cid, cls) {
   const infos = await getSubclassInfo(cid);
   const off = exoticOff("a");
   const names = [...new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && isExo(i) && !off.has(i.def.name)).map(i => i.def.name))];
   if (!names.length) throw new Error(`No eligible exotic armor for ${CLASS_NAME[cls]} (check the exotic list).`);
-  const options = names.map(n => ({ n, infos: infos.filter(info => subclassFits(exoticRule(n), info)) })).filter(o => o.infos.length);
+  const options = names.map(n => ({ n, rule: exoticRule(n), infos: infos.filter(info => subclassFits(exoticRule(n), info)) })).filter(o => o.infos.length);
   if (!options.length) { log("No exotic fits any subclass; rolling without synergy."); return { info: null, exotic: pick(names) }; }
   const o = pick(options);
   const w = balanceSubclassWeights(options, infos);
   log(`${o.n}: works with ${o.infos.map(i => i.s.def.name).join(", ")} (${options.length} of your exotics fit a subclass).`);
-  return { info: weightedPick(o.infos, i => w.get(i)), exotic: o.n };
+  const odds = subclassOdds(o.rule, o.infos, w);
+  return { info: weightedPick(o.infos, i => odds.get(i)), exotic: o.n };
 }
 
 /* Subclass weights so that, with every exotic equally likely, each subclass comes up as evenly as your exotics allow.
@@ -1108,8 +1140,8 @@ function balanceSubclassWeights(options, infos) {
   for (let it = 0; it < 200; it++) {
     const share = new Map(infos.map(i => [i, 0]));
     for (const o of options) {
-      const total = o.infos.reduce((sum, i) => sum + w.get(i), 0);
-      for (const i of o.infos) share.set(i, share.get(i) + w.get(i) / total / options.length);
+      const odds = subclassOdds(o.rule, o.infos, w);
+      for (const i of o.infos) share.set(i, share.get(i) + odds.get(i) / options.length);
     }
     for (const i of infos) if (share.get(i) > 0) w.set(i, w.get(i) * Math.sqrt(target / share.get(i)));
   }
