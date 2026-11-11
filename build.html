@@ -179,10 +179,10 @@ const PAGE = {
 <script>
 "use strict";
 
-/* Your exotic synergy sheet, published to the web as CSV. */
+/* Your exotic synergy rules (one row per exotic armor) and Focus -> archetype table, kept in this repo. See data/README.md. */
 const SHEET = {
-  synergy: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfXZbjSV7dMZ1bjJxOs0CL3tA9JJ3VhUtXydz3lWDIMrn4Gy1WinkuJMJlVEOHqIjcIxcSbZ694fBn/pub?gid=1212780051&single=true&output=csv",
-  focus:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfXZbjSV7dMZ1bjJxOs0CL3tA9JJ3VhUtXydz3lWDIMrn4Gy1WinkuJMJlVEOHqIjcIxcSbZ694fBn/pub?gid=273743486&single=true&output=csv",
+  synergy: "data/exotic_synergy.csv",
+  focus:   "data/focus.csv",
 };
 /* ================================================== */
 
@@ -753,12 +753,12 @@ async function loadSheet() {
     const timed = url => {
       const ctl = new AbortController();
       const t = setTimeout(() => ctl.abort(), 15000);
-      return fetch(url, { signal: ctl.signal }).finally(() => clearTimeout(t));
+      return fetch(url, { signal: ctl.signal, cache: "no-cache" }).finally(() => clearTimeout(t));
     };
     let a, b;
     try { [a, b] = await Promise.all([timed(SHEET.synergy), timed(SHEET.focus)]); }
-    catch (e) { throw new Error(e.name === "AbortError" ? "Google didn't respond within 15 seconds" : "browser blocked the download (" + e.message + ")"); }
-    if (!a.ok) throw new Error(`HTTP ${a.status}`);
+    catch (e) { throw new Error(e.name === "AbortError" ? "the file didn't load within 15 seconds" : "the download failed (" + e.message + ")"); }
+    if (!a.ok) throw new Error(`${SHEET.synergy}: HTTP ${a.status}`);
     const rows = parseCSV(await a.text());
     const head = (rows[0] || []).map(norm);
     const get = (r, name) => { const i = head.indexOf(norm(name)); return i >= 0 ? (r[i] || "").trim() : ""; };
