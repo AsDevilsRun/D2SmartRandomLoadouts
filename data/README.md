@@ -20,7 +20,7 @@ Lists inside a cell are comma-separated. Names follow the game's names (capitali
 - **Focus**: a role (Melee, Grenade, Super, Class, Weapons, Health) looked up in focus.csv to pick armor archetypes for the legendary pieces.
 - **Exotic perk, Notes**: reference only. Notes marked "Hand-corrected" were adjusted where the automatic match picked up abilities the exotic only mentions in passing, or elements from loose keywords. Notes starting "Prismatic N:" say why Prismatic was excluded.
 - Sources: Compendium = filled from the Destiny Data Compendium exotic text; DIM = pre-filled from DIM's exotic-synergy data. Exotic perk names: deepsight.gg / Clarity data.
-- Exotics not listed fall back to DIM's data, or to no restriction if DIM has none.
+- Exotics not listed have no subclass or weapon restriction (their tags in exotic_armor.csv still weight the roll).
 - The Compendium writes "Promethium Spurs" and "Loreley Splendor"; these files use the in-game "Promethium Spur" and "Loreley Splendor Helm".
 
 ## focus.csv: Focus role → armor archetypes

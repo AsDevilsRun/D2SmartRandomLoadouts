@@ -170,12 +170,12 @@ const PAGE = {
   rulesKey: "d2b_rules",
   defaultRules: { unownedExotics: false, noDoublePrimary: true, noDoubleSpecial: true, guaranteedDoubleSpecial: false, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mods: true, mono: false },
   forcedRules: { guaranteedExoticArmor: true },
-  extraState: { synergy: {}, sheet: null, focusMap: {} },
+  extraState: { sheet: null, focusMap: {} },
   returnTo: "build.html",
   busyIds: ["btnRollArmorSub"],
 };
 </script>
-<script src="core.js?v=2"></script>
+<script src="core.js?v=3"></script>
 <script>
 "use strict";
 
@@ -262,26 +262,44 @@ function superWeaponTypes() {
   return sup ? (SUPER_WEAPONS[norm(plugName(sup.hash))] || []).map(norm) : [];
 }
 
+/* The super's weapon types and the soft weapon need depend only on the rolled subclass and armor, so they are
+   worked out once per roll (and once per simulated build while balancing), not once per weapon. */
+let weightCtx = null;
+function weaponWeightCtx() {
+  const k = [state.roll.subclass, state.roll.armor, state.roll.armorClass, selectedChar(), state.characters, state.sheet];
+  if (!weightCtx || weightCtx.k.some((x, n) => x !== k[n])) {
+    const boostTypes = superWeaponTypes();
+    weightCtx = { k, boost: boostTypes.length ? { types: boostTypes, names: [] } : null, soft: weaponNeed(true) };
+  }
+  return weightCtx;
+}
+
 function weaponWeight(i, tags) {
   let w = 1;
   if (isExo(i) && tags) {
     const score = exwTags(i.def.name).reduce((sum, t) => sum + (tags.has(t) ? (BUILD_WEIGHTS.tagw[t] || 1) : 0), 0);
     w = Math.min(1 + Math.min(score, 6), 10);
   }
-  const boostTypes = superWeaponTypes();
-  if (boostTypes.length && meetsNeed(i, { types: boostTypes, names: [] })) w *= SUPER_WEAPON_BOOST;
-  const soft = weaponNeed(true);
+  const { boost, soft } = weaponWeightCtx();
+  if (boost && meetsNeed(i, boost)) w *= SUPER_WEAPON_BOOST;
   if (soft && !soft.chance && meetsNeed(i, soft)) w *= SOFT_WEAPON_BOOST; // rows with a Weapon chance get no 4x on their other rolls
   return w * balanceFactor(i);
 }
 
+/* Copies grouped by name, in one pass. */
+function groupByName(items) {
+  const m = new Map();
+  for (const i of items) { if (!m.has(i.def.name)) m.set(i.def.name, []); m.get(i.def.name).push(i); }
+  return m;
+}
+
 /* Like pickByName, but weighted per name (weight of a name = its best copy). */
 function pickByNameWeighted(cands, tags) {
-  const names = [...new Set(cands.map(i => i.def.name))];
-  if (!names.length) return null;
-  const wByName = Object.fromEntries(names.map(n => [n, Math.max(...cands.filter(i => i.def.name === n).map(i => weaponWeight(i, tags)))]));
-  const name = weightedPick(names, n => wByName[n]);
-  return pick(cands.filter(i => i.def.name === name));
+  const groups = groupByName(cands);
+  if (!groups.size) return null;
+  const wByName = new Map([...groups].map(([n, g]) => [n, Math.max(...g.map(i => weaponWeight(i, tags)))]));
+  const name = weightedPick([...groups.keys()], n => wByName.get(n));
+  return pick(groups.get(name));
 }
 
 const buildTags = () => {
@@ -289,33 +307,8 @@ const buildTags = () => {
   return sub ? new Set(sub.tags || []) : null;
 };
 
-/* Reroll one weapon slot, keeping the other two and all weapon rules (including weapon needs). */
-function rerollWeaponSlot(rules, E, bucket, need = weaponNeed(), forceNeed = false) {
-  const cur = state.roll.weapons || [];
-  const old = cur.find(i => i.def.bucket === bucket);
-  const fixed = cur.filter(i => i.def.bucket !== bucket);
-  const ammo = { 1: 0, 2: 0, 3: 0 };
-  for (const i of fixed) ammo[i.def.ammo]++;
-  const exoFixed = fixed.some(isExo);
-  let cands = weaponPool(rules, E).filter(i => i.def.bucket === bucket
-    && (!exoFixed || !isExo(i))
-    && !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1])
-    && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]));
-  if (rules.guaranteedExoticWeapon && !exoFixed) cands = cands.filter(isExo);
-  const champMissing = requiredChamps(rules).filter(c => !fixed.some(i => champsOf(i).has(c)));
-  if (champMissing.length) {
-    cands = cands.filter(i => champMissing.every(c => champsOf(i).has(c)));
-    if (!cands.length) throw new Error(`No ${SLOT_NAME[bucket]} weapon stuns ${champList(champMissing)} alongside the other two weapons.`);
-  }
-  if (need && (forceNeed || !fixed.some(i => meetsNeed(i, need)))) {
-    const m = cands.filter(i => meetsNeed(i, need));
-    if (m.length || forceNeed) cands = m;
-  }
-  if (!cands.length) throw new Error(`No other ${SLOT_NAME[bucket]} weapon fits the rules with the other two weapons.`);
-  const fresh = cands.filter(i => !old || i.def.name !== old.def.name);
-  const p = pickByNameWeighted(fresh.length ? fresh : cands, buildTags());
-  return cur.map(i => i.def.bucket === bucket ? p : i);
-}
+/* A weapon need as core.js's weapon rolling takes it: { test(item), label }. */
+const needTest = need => need && { ...need, test: i => meetsNeed(i, need) };
 
 /* After armor or subclass changes, swap one weapon if a weapon need is no longer met. */
 function ensureWeaponNeed(rules, E = 0) {
@@ -324,7 +317,7 @@ function ensureWeaponNeed(rules, E = 0) {
   if (!need || !cur || cur.some(i => meetsNeed(i, need))) return;
   for (const b of shuffle(WEAPON_BUCKETS)) {
     try {
-      state.roll.weapons = rerollWeaponSlot(rules, E, b, need, true);
+      state.roll.weapons = rerollWeaponSlot(rules, E, b, needTest(need), true);
       log(`Swapped a weapon to add ${need.label}.`);
       return;
     } catch { /* try another slot */ }
@@ -332,54 +325,22 @@ function ensureWeaponNeed(rules, E = 0) {
   log(`Couldn't fit ${need.label} with the weapon rules.`);
 }
 
-function rollWeapons(rules, E) {
-  const pool = weaponPool(rules, E);
-  const tags = buildTags();
+/* The weapon need for a full weapon roll: the exotic's required weapons, or (rows with a "Weapon chance" whose weapons are only
+   preferred) that share of rolls; dropped with a note if no eligible weapon meets it. */
+function rollNeed(rules, E) {
   let need = weaponNeed();
-  // "Weapon chance" on a row whose weapons are only preferred: that share of rolls includes one of them for sure.
   if (!need) {
     const soft = weaponNeed(true);
     if (soft?.chance && Math.random() < soft.chance) { need = soft; log(`Weapon chance: including ${soft.label}.`); }
   }
-  if (need && !pool.some(i => meetsNeed(i, need))) {
+  if (need && !weaponPool(rules, E).some(i => meetsNeed(i, need))) {
     const why = [];
     if (E && weaponPool(rules, 0).some(i => meetsNeed(i, need))) why.push(`${DMG_NAME[E]} Monochromatic`);
     if (rules.guaranteedDoubleSpecial && weaponPool({ ...rules, guaranteedDoubleSpecial: false }, E).some(i => meetsNeed(i, need))) why.push("Guaranteed double special");
     log(why.length ? `${why.join(" and ")} rules out ${need.label}; ignoring that weapon synergy.` : `You have no eligible ${need.label}; ignoring that weapon synergy.`);
     need = null;
   }
-  if (rules.guaranteedExoticWeapon && !pool.some(isExo)) {
-    throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
-  }
-  const champs = checkChampPool(rules, pool);
-  for (let attempt = 0; attempt < 300; attempt++) {
-    const picks = {}, ammo = { 1: 0, 2: 0, 3: 0 };
-    let exo = false, ok = true;
-    const take = i => { picks[i.def.bucket] = i; ammo[i.def.ammo]++; if (isExo(i)) exo = true; };
-    const ammoOK = i => !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1]) && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]);
-    if (need) {
-      const m = pool.filter(i => meetsNeed(i, need));
-      take(pickByNameWeighted(m, tags));
-    }
-    if (rules.guaranteedExoticWeapon && !exo) {
-      const ex = pool.filter(i => isExo(i) && !picks[i.def.bucket] && ammoOK(i));
-      if (!ex.length) continue;
-      take(pickByNameWeighted(ex, tags));
-    }
-    if (!takeChamps(champs, pool, picks, take, ammoOK, () => exo, c => pickByNameWeighted(c, tags))) continue;
-    for (const b of shuffle(WEAPON_BUCKETS)) {
-      if (picks[b]) continue;
-      const p = pickByNameWeighted(pool.filter(i => i.def.bucket === b && (!exo || !isExo(i)) && ammoOK(i)), tags);
-      if (!p) { ok = false; break; }
-      take(p);
-    }
-    if (ok) return WEAPON_BUCKETS.map(b => picks[b]);
-  }
-  // Random attempts can miss a narrow valid combination; search all of them (in weighted order) before giving up.
-  const nameW = n => Math.max(...pool.filter(i => i.def.name === n).map(i => weaponWeight(i, tags)));
-  const found = searchWeapons(rules, pool, champs, need && { test: i => meetsNeed(i, need) }, names => weightedSample(names, names.length, nameW));
-  if (found) return found;
-  throw new Error("Couldn't build a weapon loadout that meets the rules" + (need ? ` with ${need.label}` : "") + (champs.length ? ` stunning ${champList(champs)}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
+  return needTest(need);
 }
 
 /* ---------- exotic weapon balancing ----------
@@ -627,8 +588,11 @@ const SET_ODDS = [[0, 0.45], [1, 0.40], [2, 0.10], [4, 0.05]];
 const SET_BY_NORM = {};
 
 /* Set name for each legendary armor piece (id -> name, "" if none). */
+const defsHaveSets = { defs: null, v: false };
 async function armorSetNames(items) {
-  const anySet = Object.values(state.defs || {}).some(d => d.itemType === ITEMTYPE_ARMOR && d.set);
+  // Whether the downloaded definitions carry set hashes; checked once per definitions download.
+  if (defsHaveSets.defs !== state.defs) Object.assign(defsHaveSets, { defs: state.defs, v: Object.values(state.defs || {}).some(d => d.itemType === ITEMTYPE_ARMOR && d.set) });
+  const anySet = defsHaveSets.v;
   if (!anySet) await fetchEntities("is", items.map(i => i.hash), d => d.equippingBlock?.equipableItemSetHash || 0);
   const setHash = i => i.def.set || entCache.data["is" + i.hash] || 0;
   await fetchEntities("eis", items.map(setHash), d => d.displayProperties?.name || "", "DestinyEquipableItemSetDefinition");
@@ -778,7 +742,7 @@ async function rollSubclass(cid, exoticName, chosenInfo) {
   if (rule && !strictSubclassFits(rule, info)) log(`${info.s.def.name} doesn't meet ${exoticName}'s subclass rules; it rolls freely and ${[...rule.weaponTypes, ...rule.weapons].join(" / ")} is required instead.`);
   else if (rule) {
     ({ forced, forcedAspects } = forceRulePicks(rule, info, w, g => log(`${info.s.def.name}: couldn't meet "${g.label}".`)));
-    log(`Synergy (${rule.source === "sheet" ? "your sheet" : "DIM data"}) for ${exoticName}: ${synergyText(exoticName)}`);
+    log(`Synergy for ${exoticName}: ${synergyText(exoticName)}`);
   }
 
   const abilities = [];
@@ -911,43 +875,7 @@ function weightedSample(list, n, wf) {
   return out;
 }
 
-/* ---------- exotic synergy (DIM's d2-additional-info) ---------- */
-const SYNERGY_URL = "https://raw.githubusercontent.com/DestinyItemManager/d2-additional-info/master/output/exotic-synergy.json";
-
-async function loadSynergy() {
-  try {
-    const res = await fetch(SYNERGY_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    state.synergy = await res.json();
-    const supers = [...new Set(Object.values(state.synergy).flatMap(v => v.subclass || []))];
-    await fetchEntities("p", supers, slimPlug);
-    log(`Exotic synergy data loaded (${Object.keys(state.synergy).length} exotics).`);
-  } catch (e) {
-    log("Couldn't load exotic synergy data; subclass won't be constrained: " + e.message);
-  }
-}
-
-function synergyFor(name) {
-  const dmg = new Set(), sup = new Set();
-  for (const [h, d] of Object.entries(state.defs || {})) {
-    if (d.name !== name || d.itemType !== ITEMTYPE_ARMOR || d.tier !== TIER_EXOTIC) continue;
-    const syn = state.synergy[h];
-    if (!syn) continue;
-    for (const x of syn.damageType || []) dmg.add(x);
-    for (const x of syn.subclass || []) sup.add(Number(x));
-  }
-  return { dmg: [...dmg], sup: [...sup] };
-}
-
-function synergyText(name) {
-  const { dmg, sup } = synergyFor(name);
-  if (!dmg.length && !sup.length) return "Any subclass";
-  const els = dmg.length >= 5 ? "Any element" : dmg.map(x => DMG_NAME[x] || x).join(", ");
-  const supers = [...new Set(sup.map(plugName))].join(", ");
-  return [els, supers].filter(Boolean).join(" · ");
-}
-
-/* ---------- synergy rules (your sheet first, DIM's data as fallback) ---------- */
+/* ---------- synergy rules (data/exotic_synergy.csv) ---------- */
 const EL_NUM = { arc: 2, solar: 3, void: 4, stasis: 6, strand: 7, prismatic: "prism" };
 const elementalOnly = els => els.filter(e => typeof e === "number");
 const splitList = v => String(v || "").split(",").map(x => x.trim()).filter(Boolean);
@@ -1015,22 +943,16 @@ async function loadSheet() {
     $("sheetStatus").style.color = "";
   } catch (e) {
     state.sheet = null;
-    log("Couldn't load your synergy sheet; using DIM's data instead: " + e.message);
-    $("sheetStatus").textContent = "Synergy sheet: NOT loaded — using DIM's data (" + e.message + ")";
+    log("Couldn't load your synergy sheet; rolling without synergy rules: " + e.message);
+    $("sheetStatus").textContent = "Synergy sheet: NOT loaded — rolling without synergy rules (" + e.message + ")";
     $("sheetStatus").style.color = "var(--bad)";
   }
 }
 
-/* The rules for an exotic: its sheet row, or one built from DIM's data. */
+/* The rules for an exotic: its row in the synergy sheet, or null (no restriction) if it has none. */
 function exoticRule(name) {
   if (!name) return null;
-  const row = state.sheet?.[norm(name)];
-  if (row) return { ...row, source: "sheet" };
-  const { dmg, sup } = synergyFor(name);
-  const els = dmg.length >= 5 ? [] : dmg;
-  const supers = [...new Set(sup.map(plugName))];
-  return { name, elements: els, supers, grenades: [], melees: [], aspects: [], classAbilities: [], movement: [],
-    prism: supers.length ? "Y" : (els.length ? "N" : ""), forceEl: "", prismNeeds: [], focus: [], weaponTypes: [], weapons: [], source: "DIM" };
+  return state.sheet?.[norm(name)] || null;
 }
 
 const hasReqs = r => [r.supers, r.grenades, r.melees, r.aspects].some(l => l.length);
@@ -1058,13 +980,24 @@ function plugMeets(h, g) {
 }
 
 /* "Or weapon" rows: any subclass works as long as the row's weapon is also rolled (forced when the subclass doesn't meet the row). */
+/* The answer per rule is remembered until something the weapon list depends on changes: the inventory (a new list on every
+   profile load), the exotic weapon list, or the "unowned exotics" and "guaranteed double special" settings. */
+const orReady = { ctx: null, byRule: new Map() };
 function orWeaponReady(rule) {
   if (!rule?.orWeapon || !(rule.weaponTypes?.length || rule.weapons?.length)) return false;
-  const need = { types: rule.weaponTypes.map(norm), names: rule.weapons.map(norm), excl: (rule.excludedWeapons || []).map(norm) };
-  return weaponPool(state.rules, 0).some(i => meetsNeed(i, need));
+  let off = "";
+  try { off = localStorage.getItem("d2r_off_w") || ""; } catch { /* storage unavailable */ }
+  const ctx = [state.items, state.postmaster, !!state.rules.unownedExotics, !!state.rules.guaranteedDoubleSpecial, off];
+  if (!orReady.ctx || orReady.ctx.some((x, k) => x !== ctx[k])) { orReady.ctx = ctx; orReady.byRule = new Map(); }
+  if (!orReady.byRule.has(rule)) {
+    const need = { types: rule.weaponTypes.map(norm), names: rule.weapons.map(norm), excl: (rule.excludedWeapons || []).map(norm) };
+    orReady.byRule.set(rule, weaponPool(state.rules, 0).some(i => meetsNeed(i, need)));
+  }
+  return orReady.byRule.get(rule);
 }
 
 function subclassFits(rule, info) {
+  if (!rule) return true;
   return strictSubclassFits(rule, info) || orWeaponReady(rule);
 }
 
@@ -1084,6 +1017,7 @@ function strictSubclassFits(rule, info) {
 
 /* Does this exotic's rule hold for the subclass exactly as rolled (its chosen abilities and aspects)? */
 function fitsRolledSubclass(rule, sub) {
+  if (!rule) return true;
   const info = sub.info;
   if (info.element === "prism") {
     const agnostic = !elementalOnly(rule.elements).length && !hasReqs(rule);
@@ -1114,7 +1048,7 @@ function synergyText(name) {
   if (!(r.elements.length === 1 && r.elements[0] === "prism")) parts.push(r.prism === "Y" || r.elements.includes("prism") || (!elementalOnly(r.elements).length && !hasReqs(r)) ? "Prismatic OK" : "No Prismatic");
   if (r.orWeapon) parts.push(`or any subclass with ${[...r.weaponTypes, ...r.weapons].join(" / ")}`);
   if (r.focus.length) parts.push("Focus: " + r.focus.join(", "));
-  return parts.join(" · ") + (r.source === "DIM" ? " (DIM data)" : "");
+  return parts.join(" · ");
 }
 
 /* Armor archetype names for the given items (from their sockets). */
@@ -1376,10 +1310,19 @@ function balanceSubclassWeights(options, infos) {
   return w;
 }
 
+/* Everything except "Roll all" changes part of a build, so it needs a full build for the selected character first. */
+const PARTIAL_ROLL_IDS = ["btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRollArmorSub"];
+const hasBuild = () => {
+  const cid = selectedChar();
+  return !!(cid && state.roll.subclass?.charId === cid && state.roll.weapons?.length && state.roll.armor?.length && state.roll.armorClass === selectedClass());
+};
+function requireBuild() { if (!hasBuild()) throw new Error('Roll a full build first ("Roll all").'); }
+
 async function rerollOne(bucket) {
+  requireBuild();
   await ensureChampData();
   await ensureWeaponBalance(selectedChar(), selectedClass());
-  state.roll.weapons = rerollWeaponSlot(state.rules, await weaponElement(selectedChar()), bucket);
+  state.roll.weapons = rerollWeaponSlot(state.rules, await weaponElement(selectedChar()), bucket, needTest(weaponNeed()));
   if (state.rules.mods && state.roll.armor) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
     catch (e) { log("Couldn't plan mods: " + e.message); }
@@ -1388,6 +1331,7 @@ async function rerollOne(bucket) {
 }
 
 async function doRoll({ subclass, weapons, armor }) {
+  if (!(subclass && weapons && armor === true)) requireBuild();
   await ensureChampData();
   await ensureAbilityBalance(selectedChar(), selectedClass());
   await ensureWeaponBalance(selectedChar(), selectedClass());
@@ -1402,7 +1346,7 @@ async function doRoll({ subclass, weapons, armor }) {
     const names = [...new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && isExo(i) && !off.has(i.def.name)).map(i => i.def.name))];
     const weaponsOK = n => {
       const r = exoticRule(n);
-      const need = r.forceWeapon !== false && (r.weaponTypes?.length || r.weapons?.length) ? { types: r.weaponTypes.map(norm), names: r.weapons.map(norm), excl: (r.excludedWeapons || []).map(norm) } : null;
+      const need = r && r.forceWeapon !== false && (r.weaponTypes?.length || r.weapons?.length) ? { types: r.weaponTypes.map(norm), names: r.weapons.map(norm), excl: (r.excludedWeapons || []).map(norm) } : null;
       return !need || !state.roll.weapons || state.roll.weapons.some(i => meetsNeed(i, need));
     };
     let exact = names.filter(n => fitsRolledSubclass(exoticRule(n), sub) || orWeaponReady(exoticRule(n)));
@@ -1437,7 +1381,7 @@ async function doRoll({ subclass, weapons, armor }) {
     log("Weapons don't match the new subclass element; rerolling weapons.");
     weapons = true;
   }
-  if (weapons) state.roll.weapons = rollWeapons(rules, E);
+  if (weapons) state.roll.weapons = rollWeapons(rules, E, rollNeed(rules, E));
   else if (armor || subclass) ensureWeaponNeed(rules, E);
   if (armorExotic) state.roll.armor = await rollArmor(rules, cls, armorExotic);
   state.roll.mods = null;
@@ -1458,6 +1402,24 @@ function wire() {
 }
 
 /* ---------- page hooks for core.js ---------- */
+PAGE.updateButtons = busyNow => {
+  const ok = hasBuild();
+  for (const id of PARTIAL_ROLL_IDS) {
+    const b = $(id);
+    if (!b) continue;
+    b.disabled = busyNow || !ok;
+    b.title = ok ? "" : 'Roll a full build first ("Roll all").';
+  }
+  for (const el of document.querySelectorAll("[data-reroll]")) el.disabled = busyNow || !ok;
+};
+/* Weapon picks weigh each name by synergy; the complete search tries names in weighted order. */
+PAGE.pickWeapon = cands => pickByNameWeighted(cands, buildTags());
+PAGE.weaponSearchOrder = pool => {
+  const tags = buildTags(), byName = groupByName(pool);
+  const nameW = n => Math.max(...(byName.get(n) || []).map(i => weaponWeight(i, tags)));
+  return names => weightedSample(names, names.length, nameW);
+};
+
 PAGE.renderExtra = () => {
   const mt = $("modTable"); mt.replaceChildren();
   for (const plan of state.roll.mods || []) {
@@ -1503,7 +1465,6 @@ init(async () => {
   await loadTagData();
   log("Loading your synergy sheet…");
   await loadSheet();
-  await loadSynergy();
 });
 </script>
 </body>

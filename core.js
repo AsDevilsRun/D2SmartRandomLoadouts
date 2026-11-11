@@ -66,9 +66,13 @@ const store = {
 // They now live in IndexedDB; clear the old ones before anything else is saved.
 try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && /^d2[rb]_ent/.test(k)) localStorage.removeItem(k); } } catch { /* ignore */ }
 
+/* Newest first; only the latest LOG_MAX lines are kept so a long session doesn't slow every message down. */
+const LOG_MAX = 400;
+const logLines = [];
 function log(msg) {
-  const el = $("log");
-  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent;
+  logLines.unshift(`[${new Date().toLocaleTimeString()}] ${msg}`);
+  if (logLines.length > LOG_MAX) logLines.length = LOG_MAX;
+  $("log").textContent = logLines.join("\n") + "\n";
 }
 
 const state = {
@@ -120,13 +124,16 @@ async function socketGap() {
 
 async function runPool(items, n, fn) {
   let i = 0;
+  const failed = [];
   const worker = async () => {
     while (i < items.length) {
       const x = items[i++];
-      try { await fn(x); } catch (e) { log(`Lookup failed for ${x}: ${e.message}`); }
+      try { await fn(x); } catch (e) { failed.push([x, e.message]); }
     }
   };
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
+  // One line for all failures (an outage would otherwise log one line per lookup).
+  if (failed.length) log(`${failed.length} lookup${failed.length === 1 ? "" : "s"} failed (first: ${failed[0][0]}: ${failed[0][1]}).`);
 }
 
 /* ---------- auth ---------- */
@@ -317,7 +324,9 @@ const entCache = {
 
 async function fetchEntities(prefix, hashes, slimFn, type = "DestinyInventoryItemDefinition") {
   await entCache.open();
-  const missing = [...new Set(hashes)].filter(h => h && !((prefix + h) in entCache.data));
+  // Plugs from the bulk definition download are already known; only look up the rest.
+  const known = h => (prefix + h) in entCache.data || (prefix === "p" && h in state.plugDefs);
+  const missing = [...new Set(hashes)].filter(h => h && !known(h));
   if (!missing.length) return;
   log(`Looking up ${missing.length} definitions…`);
   await runPool(missing, 6, async h => {
@@ -347,7 +356,7 @@ function plugElement(h) {
   for (const tok of (plugDef(h)?.c || "").toLowerCase().split(/[._\s-]+/)) if (ELEMENT_TOKENS[tok]) return ELEMENT_TOKENS[tok];
   return 0;
 }
-const isEmptyPlug = h => !h || /^empty/i.test(plugDef(h)?.n || "") || /^$/.test(plugDef(h)?.n ?? "x");
+const isEmptyPlug = h => { const n = plugDef(h)?.n; return !h || n === "" || /^empty/i.test(n || ""); };
 
 /* ---------- inventory ---------- */
 async function loadProfile() {
@@ -742,6 +751,71 @@ function weaponPool(rules, E) {
   return rules.guaranteedDoubleSpecial ? pool.filter(i => i.def.bucket === BUCKET.POWER || i.def.ammo === 2) : pool;
 }
 
+/* ---------- weapon rolling (both pages) ----------
+   A page can set PAGE.pickWeapon(cands) to choose among candidates (build.html: weighted by synergy; default: every name
+   equally likely) and PAGE.weaponSearchOrder(pool) to order names for the complete search (default: random).
+   need (build.html only) is an optional { test(item), label } that one weapon must pass. */
+const pickWeapon = cands => (PAGE.pickWeapon || pickByName)(cands);
+
+/* Reroll one weapon slot, keeping the other two and all weapon rules. forceNeed: the new weapon must meet need. */
+function rerollWeaponSlot(rules, E, bucket, need = null, forceNeed = false) {
+  const cur = state.roll.weapons || [];
+  const old = cur.find(i => i.def.bucket === bucket);
+  const fixed = cur.filter(i => i.def.bucket !== bucket);
+  const ammo = { 1: 0, 2: 0, 3: 0 };
+  for (const i of fixed) ammo[i.def.ammo]++;
+  const exoFixed = fixed.some(isExo);
+  let cands = weaponPool(rules, E).filter(i => i.def.bucket === bucket
+    && (!exoFixed || !isExo(i))
+    && !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1])
+    && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]));
+  if (rules.guaranteedExoticWeapon && !exoFixed) cands = cands.filter(isExo);
+  const champMissing = requiredChamps(rules).filter(c => !fixed.some(i => champsOf(i).has(c)));
+  if (champMissing.length) {
+    cands = cands.filter(i => champMissing.every(c => champsOf(i).has(c)));
+    if (!cands.length) throw new Error(`No ${SLOT_NAME[bucket]} weapon stuns ${champList(champMissing)} alongside the other two weapons.`);
+  }
+  if (need && (forceNeed || !fixed.some(need.test))) {
+    const m = cands.filter(need.test);
+    if (m.length || forceNeed) cands = m;
+  }
+  if (!cands.length) throw new Error(`No other ${SLOT_NAME[bucket]} weapon fits the rules with the other two weapons.`);
+  const fresh = cands.filter(i => !old || i.def.name !== old.def.name);
+  const p = pickWeapon(fresh.length ? fresh : cands);
+  return cur.map(i => i.def.bucket === bucket ? p : i);
+}
+
+function rollWeapons(rules, E, need = null) {
+  const pool = weaponPool(rules, E);
+  if (rules.guaranteedExoticWeapon && !pool.some(isExo)) {
+    throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
+  }
+  const champs = checkChampPool(rules, pool);
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const picks = {}, ammo = { 1: 0, 2: 0, 3: 0 };
+    let exo = false, ok = true;
+    const take = i => { picks[i.def.bucket] = i; ammo[i.def.ammo]++; if (isExo(i)) exo = true; };
+    const ammoOK = i => !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1]) && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]);
+    if (need) take(pickWeapon(pool.filter(need.test)));
+    if (rules.guaranteedExoticWeapon && !exo) {
+      const ex = pool.filter(i => isExo(i) && !picks[i.def.bucket] && ammoOK(i));
+      if (!ex.length) continue;
+      take(pickWeapon(ex));
+    }
+    if (!takeChamps(champs, pool, picks, take, ammoOK, () => exo, pickWeapon)) continue;
+    for (const b of shuffle(WEAPON_BUCKETS)) {
+      if (picks[b]) continue;
+      const p = pickWeapon(pool.filter(i => i.def.bucket === b && (!exo || !isExo(i)) && ammoOK(i)));
+      if (!p) { ok = false; break; }
+      take(p);
+    }
+    if (ok) return WEAPON_BUCKETS.map(b => picks[b]);
+  }
+  // Random attempts can miss a narrow valid combination; search all of them before giving up.
+  const found = searchWeapons(rules, pool, champs, need, PAGE.weaponSearchOrder ? PAGE.weaponSearchOrder(pool) : shuffle);
+  if (found) return found;
+  throw new Error("Couldn't build a weapon loadout that meets the rules" + (need ? ` with ${need.label}` : "") + (champs.length ? ` stunning ${champList(champs)}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
+}
 
 /* ---------- rendering ---------- */
 const pullText = i => i.postmaster
@@ -839,15 +913,20 @@ function renderRoll() {
   const all = [...(state.roll.weapons || []), ...(state.roll.armor || [])];
   $("dimString").value = all.map(i => i.virtual ? `exactname:"${i.def.name}"` : "id:" + i.id).join(" or ");
   $("btnEquip").disabled = !(all.length || r);
+  if (PAGE.updateButtons) PAGE.updateButtons(isBusy);
 }
 
+const exoticNames = { defs: null, byKey: {} };
 function renderExoticList(list) {
   const isW = list === "w";
   const cls = selectedClass();
   const ok = d => isW
     ? d.itemType === ITEMTYPE_WEAPON && WEAPON_BUCKETS.includes(d.bucket) && d.ammo
     : d.itemType === ITEMTYPE_ARMOR && ARMOR_BUCKETS.includes(d.bucket) && d.classType === cls;
-  const names = [...new Set(Object.values(state.defs)
+  // The game's exotic names only change with the definitions, so scan them once per list and class.
+  const nk = list + "|" + cls;
+  if (exoticNames.defs !== state.defs) { exoticNames.defs = state.defs; exoticNames.byKey = {}; }
+  const names = exoticNames.byKey[nk] ||= [...new Set(Object.values(state.defs)
     .filter(d => d.tier === TIER_EXOTIC && ok(d) && d.name && d.name !== "?" && !/classified/i.test(d.name))
     .map(d => d.name))].sort((a, b) => a.localeCompare(b));
   const owned = new Set(state.items.filter(i => isExo(i) && ok(i.def)).map(i => i.def.name));
@@ -1191,10 +1270,13 @@ async function equipRoll() {
 
 /* ---------- UI wiring ---------- */
 const BUSY_IDS = [...(PAGE.busyIds || []), "btnRollAll", "btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRefresh", "btnEquip", "charSelect"];
+let isBusy = false;
 function setBusy(b) {
+  isBusy = b;
   for (const id of BUSY_IDS) if ($(id)) $(id).disabled = b;
   for (const el of document.querySelectorAll("[data-reroll]")) el.disabled = b;
   if (!b) $("btnEquip").disabled = !((state.roll.weapons || []).length || (state.roll.armor || []).length || state.roll.subclass);
+  if (PAGE.updateButtons) PAGE.updateButtons(b); // build.html: partial rolls need a full build first
 }
 
 async function busy(fn) {

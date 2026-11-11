@@ -164,60 +164,9 @@ const PAGE = {
   defaultRules: { unownedExotics: false, subclass: true, noDoublePrimary: true, noDoubleSpecial: true, guaranteedDoubleSpecial: false, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mono: false },
 };
 </script>
-<script src="core.js?v=2"></script>
+<script src="core.js?v=3"></script>
 <script>
 "use strict";
-
-/* Reroll one weapon slot, keeping the other two and all weapon rules. */
-function rerollWeaponSlot(rules, E, bucket) {
-  const cur = state.roll.weapons || [];
-  const old = cur.find(i => i.def.bucket === bucket);
-  const fixed = cur.filter(i => i.def.bucket !== bucket);
-  const ammo = { 1: 0, 2: 0, 3: 0 };
-  for (const i of fixed) ammo[i.def.ammo]++;
-  const exoFixed = fixed.some(isExo);
-  let cands = weaponPool(rules, E).filter(i => i.def.bucket === bucket
-    && (!exoFixed || !isExo(i))
-    && !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1])
-    && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]));
-  if (rules.guaranteedExoticWeapon && !exoFixed) cands = cands.filter(isExo);
-  const champMissing = requiredChamps(rules).filter(c => !fixed.some(i => champsOf(i).has(c)));
-  if (champMissing.length) {
-    cands = cands.filter(i => champMissing.every(c => champsOf(i).has(c)));
-    if (!cands.length) throw new Error(`No ${SLOT_NAME[bucket]} weapon stuns ${champList(champMissing)} alongside the other two weapons.`);
-  }
-  if (!cands.length) throw new Error(`No other ${SLOT_NAME[bucket]} weapon fits the rules with the other two weapons.`);
-  const fresh = cands.filter(i => !old || i.def.name !== old.def.name);
-  const p = pickByName(fresh.length ? fresh : cands);
-  return cur.map(i => i.def.bucket === bucket ? p : i);
-}
-
-function rollWeapons(rules, E) {
-  const pool = weaponPool(rules, E);
-  if (rules.guaranteedExoticWeapon && !pool.some(isExo)) {
-    throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
-  }
-  const champs = checkChampPool(rules, pool);
-  for (let attempt = 0; attempt < 300; attempt++) {
-    const picks = {}, ammo = { 1: 0, 2: 0, 3: 0 };
-    let exo = false, ok = true;
-    const take = i => { picks[i.def.bucket] = i; ammo[i.def.ammo]++; if (isExo(i)) exo = true; };
-    const ammoOK = i => !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1]) && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]);
-    if (rules.guaranteedExoticWeapon) take(pickByName(pool.filter(isExo)));
-    if (!takeChamps(champs, pool, picks, take, ammoOK, () => exo, pickByName)) continue;
-    for (const b of shuffle(WEAPON_BUCKETS)) {
-      if (picks[b]) continue;
-      const p = pickByName(pool.filter(i => i.def.bucket === b && (!exo || !isExo(i)) && ammoOK(i)));
-      if (!p) { ok = false; break; }
-      take(p);
-    }
-    if (ok) return WEAPON_BUCKETS.map(b => picks[b]);
-  }
-  // Random attempts can miss a narrow valid combination; search all of them before giving up.
-  const found = searchWeapons(rules, pool, champs, null, shuffle);
-  if (found) return found;
-  throw new Error("Couldn't build a weapon loadout that meets the rules" + (champs.length ? ` stunning ${champList(champs)}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
-}
 
 function rollArmor(rules, cls) {
   const off = exoticOff("a");
@@ -284,15 +233,11 @@ async function rerollOne(bucket) {
 async function doRoll({ subclass, weapons, armor }) {
   const cid = selectedChar();
   const rules = state.rules;
+  // Each button rolls only its own section.
   if (subclass) state.roll.subclass = await rollSubclass(cid);
-  const E = await weaponElement(cid);
-  // A new subclass can change the Monochromatic element; reroll weapons that no longer match.
-  if (!weapons && E && state.roll.weapons && !state.roll.weapons.every(i => elementOK(i.def.bucket, i.dmg, E))) {
-    log("Weapons don't match the new subclass element; rerolling weapons.");
-    weapons = true;
-  }
   if (weapons) {
     await ensureChampData();
+    const E = await weaponElement(cid);
     if (E) log(`Monochromatic: ${DMG_NAME[E]}.`);
     state.roll.weapons = rollWeapons(rules, E);
   }
