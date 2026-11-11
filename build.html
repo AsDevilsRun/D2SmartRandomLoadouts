@@ -675,6 +675,89 @@ async function planSetBonus(exo, free, legendaries) {
   return b ? [a, b] : [a];
 }
 
+/* One pick per requirement group of a synergy rule: an ability if one meets it, else an aspect. */
+function forceRulePicks(rule, info, w, onMiss) {
+  const forced = {}, forcedAspects = [];
+  const abilityIdx = [...info.groups.supers, ...info.groups.abilities], aIdx = info.groups.aspects;
+  const union = idxs => [...new Set(idxs.flatMap(idx => info.choices(idx)))];
+  for (const g of ruleGroups(rule, info)) {
+    if ([...Object.values(forced), ...forcedAspects].some(h => plugMeets(h, g))) continue;
+    const opts = abilityIdx.filter(idx => !(idx in forced)).flatMap(idx => info.choices(idx).filter(h => plugMeets(h, g)).map(h => ({ idx, h })));
+    const aspectOpts = g.abilityOnly || forcedAspects.length >= aIdx.length ? [] : union(aIdx).filter(h => plugMeets(h, g) && !forcedAspects.includes(h));
+    if (opts.length) { const o = weightedPick(opts, x => w(x.h)); forced[o.idx] = o.h; }
+    else if (aspectOpts.length) forcedAspects.push(weightedPick(aspectOpts, w));
+    else if (onMiss) onMiss(g);
+  }
+  return { forced, forcedAspects };
+}
+
+/* ---------- ability balancing ----------
+   Each ability (super, grenade, melee, class ability, jump) gets a factor so that, on each subclass, every option in a slot
+   comes up equally often over many "Roll all" presses. Tags and the synergy rules still decide which exotic armor an ability
+   tends to come with: an ability with no matching tags fills in on builds where nothing else matches. Abilities are picked
+   before aspects and fragments, so their odds depend only on the exotic armor, the subclass and the rules, and the factors
+   are worked out from those directly (only the synergy rules' own picks are sampled, ABILITY_RULE_SAMPLES times).
+   Abilities a synergy row requires are picked before any weighting, so they can end up above an even share. */
+const ABILITY_RULE_SAMPLES = 40;
+const abal = { key: "", f: new Map() };   // "<subclass item id>|<socket index>" -> Map(plug hash -> factor)
+const abilityFactor = (info, idx, h) => abal.f.get(info.s.id + "|" + idx)?.get(h) ?? 1;
+
+async function ensureAbilityBalance(cid, cls) {
+  const key = balanceKey(cls).replace(/^wbal\d+/, "abal1");
+  if (abal.key === key) return;
+  abal.key = key; abal.f = new Map();
+  let opt;
+  try { opt = await subclassOptions(cid, cls); } catch (e) { log("Couldn't balance abilities: " + e.message); return; }
+  const { infos, options } = opt;
+  if (!options.length) return;
+  const sw = balanceSubclassWeights(options, infos);
+  const parts = new Map();   // socket key -> [{mass, forced: [[h, p]], free, w: [[h, weight]]}]
+  for (const o of options) {
+    const odds = subclassOdds(o.rule, o.infos, sw);
+    const ctx = buildContext(o.n);
+    const w = h => plugWeight(h, ctx);
+    for (const info of o.infos) {
+      const mass = odds.get(info) / options.length;
+      const n = o.rule && strictSubclassFits(o.rule, info) ? ABILITY_RULE_SAMPLES : 0;
+      const counts = new Map();
+      for (let k = 0; k < n; k++) {
+        const { forced } = forceRulePicks(o.rule, info, w, null);
+        for (const [idx, h] of Object.entries(forced)) {
+          if (!counts.has(idx)) counts.set(idx, new Map());
+          counts.get(idx).set(h, (counts.get(idx).get(h) || 0) + 1);
+        }
+      }
+      for (const idx of [...info.groups.supers, ...info.groups.abilities]) {
+        const choices = info.choices(idx);
+        if (!choices.length) continue;
+        const fc = counts.get(String(idx)) || new Map();
+        const forced = [...fc].map(([h, c]) => [h, c / n]);
+        const pForced = forced.reduce((a, [, p]) => a + p, 0);
+        const sk = info.s.id + "|" + idx;
+        if (!parts.has(sk)) parts.set(sk, []);
+        parts.get(sk).push({ mass, forced, free: 1 - pForced, w: choices.map(h => [h, w(h)]) });
+      }
+    }
+  }
+  for (const [sk, list] of parts) {
+    const hs = [...new Set(list.flatMap(p => p.w.map(([h]) => h)))];
+    if (hs.length < 2) continue;
+    const total = list.reduce((a, p) => a + p.mass, 0), target = 1 / hs.length;
+    const f = new Map(hs.map(h => [h, 1]));
+    for (let it = 0; it < 120; it++) {
+      const share = new Map(hs.map(h => [h, 0]));
+      for (const p of list) {
+        for (const [h, q] of p.forced) share.set(h, share.get(h) + p.mass * q / total);
+        const t = p.w.reduce((a, [h, x]) => a + f.get(h) * x, 0);
+        if (t > 0) for (const [h, x] of p.w) share.set(h, share.get(h) + p.mass * p.free * f.get(h) * x / t / total);
+      }
+      for (const h of hs) if (share.get(h) > 0) f.set(h, Math.min(1000, Math.max(0.001, f.get(h) * Math.sqrt(target / share.get(h)))));
+    }
+    abal.f.set(sk, f);
+  }
+  log(`Abilities balanced for ${CLASS_NAME[cls]} (${parts.size} ability slots across ${infos.length} subclasses).`);
+}
+
 async function rollSubclass(cid, exoticName, chosenInfo) {
   const infos = await getSubclassInfo(cid);
   if (!infos.length) throw new Error("Couldn't read subclasses for this character.");
@@ -691,17 +774,10 @@ async function rollSubclass(cid, exoticName, chosenInfo) {
   const aIdx = info.groups.aspects;
 
   // Force one pick per requirement group from the synergy rules.
-  const forced = {}, forcedAspects = [];
+  let forced = {}, forcedAspects = [];
   if (rule && !strictSubclassFits(rule, info)) log(`${info.s.def.name} doesn't meet ${exoticName}'s subclass rules; it rolls freely and ${[...rule.weaponTypes, ...rule.weapons].join(" / ")} is required instead.`);
   else if (rule) {
-    for (const g of ruleGroups(rule, info)) {
-      if ([...Object.values(forced), ...forcedAspects].some(h => plugMeets(h, g))) continue;
-      const opts = abilityIdx.filter(idx => !(idx in forced)).flatMap(idx => info.choices(idx).filter(h => plugMeets(h, g)).map(h => ({ idx, h })));
-      const aspectOpts = g.abilityOnly || forcedAspects.length >= aIdx.length ? [] : union(aIdx).filter(h => plugMeets(h, g) && !forcedAspects.includes(h));
-      if (opts.length) { const o = weightedPick(opts, x => w(x.h)); forced[o.idx] = o.h; }
-      else if (aspectOpts.length) forcedAspects.push(weightedPick(aspectOpts, w));
-      else log(`${info.s.def.name}: couldn't meet "${g.label}".`);
-    }
+    ({ forced, forcedAspects } = forceRulePicks(rule, info, w, g => log(`${info.s.def.name}: couldn't meet "${g.label}".`)));
     log(`Synergy (${rule.source === "sheet" ? "your sheet" : "DIM data"}) for ${exoticName}: ${synergyText(exoticName)}`);
   }
 
@@ -709,7 +785,7 @@ async function rollSubclass(cid, exoticName, chosenInfo) {
   for (const idx of abilityIdx) {
     const choices = info.choices(idx);
     if (!choices.length) continue;
-    const hash = forced[idx] || weightedPick(choices, w);
+    const hash = forced[idx] || weightedPick(choices, h => w(h) * abilityFactor(info, idx, h));
     abilities.push({ idx, hash, kind: info.groups.supers.includes(idx) ? "supers" : (plugKind(hash) || "ability") });
   }
   const aspects = [...forcedAspects, ...weightedSample(union(aIdx).filter(h => !forcedAspects.includes(h)), aIdx.length - forcedAspects.length, w)];
@@ -1313,6 +1389,7 @@ async function rerollOne(bucket) {
 
 async function doRoll({ subclass, weapons, armor }) {
   await ensureChampData();
+  await ensureAbilityBalance(selectedChar(), selectedClass());
   await ensureWeaponBalance(selectedChar(), selectedClass());
   const cid = selectedChar();
   const cls = selectedClass();

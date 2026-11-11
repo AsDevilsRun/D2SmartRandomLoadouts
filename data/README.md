@@ -34,6 +34,8 @@ Lists inside a cell are comma-separated. Names follow the game's names (capitali
 
 Exotic weapons are balanced: within each class, every exotic weapon comes up about equally often over many rolls (counting every exotic in the game as owned). Tags, weapon rules and Weapon chance decide which builds an exotic lands on, not how often it appears overall. Weapons a row names directly (Celestial Nighthawk's Still Hunt, Necrotic Grip's Thorn and Osteo Striga) can end up above even odds when their row's own rate is higher than that. The page works the balance out itself the first time you roll on a class, and again whenever these files, the rules or your inventory change.
 
+Abilities are balanced the same way: on each subclass, every super, grenade, melee, class ability and jump comes up about equally often in its slot. Tags still decide which exotic armor an ability tends to come with, so an ability with no tags in subclass_plugs.csv mostly fills builds where nothing else matches. Give an ability tags here if it should pair with particular exotics. Abilities a synergy row requires can end up above an even share.
+
 A plug, exotic weapon or set bonus gets points for each tag it shares with the build (the exotic armor's tags plus the rolled aspects' and fragments' tags). Weight = tier weight × (1 + points, capped at 6).
 
 | File | Columns | Used for |
