@@ -1923,7 +1923,15 @@ function makeToast(title) {
       } else {
         el.classList.add("ok"); t.textContent = title.replace(/…$/, "") + " — applied";
         phase.textContent = "Succeeded";
-        setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 450); }, 6000);
+        // Stays until dismissed, or until this tab has been visible for 30 s in total since finishing.
+        let shown = 0, last = performance.now();
+        const tick = setInterval(() => {
+          const now = performance.now();
+          if (!document.hidden) shown += now - last;
+          last = now;
+          if (!el.isConnected) clearInterval(tick);
+          else if (shown >= 30000) { clearInterval(tick); el.style.opacity = "0"; setTimeout(() => el.remove(), 450); }
+        }, 250);
       }
     },
   };
