@@ -1,0 +1,387 @@
+Name,Kind,Tier,Tags
+Arc Soul,aspect,C,amplified
+Ascension,aspect,A,"airborne, amplified, jolt"
+Banner of War,aspect,B,"melee, super"
+Bastion,aspect,D,"class, overshield, resist, super"
+Bleak Watcher,aspect,B,"grenade, slow"
+Chaos Accelerant,aspect,B,"grenade, suppress"
+Child of the Old Gods,aspect,D,"grenade, heal, melee, weaken, weapon"
+Consecration,aspect,B,"ignition, melee, resist"
+Controlled Demolition,aspect,S,volatile
+Crackshot,aspect,B,"class, heal, radiant, scorch"
+Cryoclasm,aspect,F,"crystal, shatter"
+Diamond Lance,aspect,C,"crystal, freeze, frostarmor, resist, shatter, weapon"
+Drengr's Lash,aspect,D,suspend
+Electrostatic Mind,aspect,C,"amplified, ionic"
+Ensnaring Slam,aspect,C,"class, resist, suspend, wovenmail"
+Feed the Void,aspect,A,"devour, grenade"
+Flechette Storm,aspect,D,"melee, resist, unravel"
+Flow State,aspect,F,"amplified, class, jolt, resist, weapon"
+Frostpulse,aspect,C,"freeze, frostarmor, resist"
+Glacial Harvest,aspect,C,"frostarmor, grenade, resist, shard, shatter, weapon"
+Grim Harvest,aspect,B,"frostarmor, resist, shard, shatter, weapon"
+Gunpowder Gamble,aspect,B,"grenade, ignition, scorch, super"
+Heat Rises,aspect,B,"airborne, grenade, heal, melee, weapon"
+Hellion,aspect,C,scorch
+Howl of the Storm,aspect,A,"crystal, freeze, melee"
+Icarus Dash,aspect,C,"airborne, heal"
+Iceflare Bolts,aspect,C,"freeze, shatter"
+Into the Fray,aspect,C,"melee, resist, super, tangle, wovenmail"
+Ionic Sentry,aspect,B,"blind, grenade"
+Juggernaut,aspect,F,"amplified, bolt, overshield, resist"
+Knock 'Em Down,aspect,B,"heal, melee, radiant, resist, super"
+Knockout,aspect,A,"amplified, heal, melee"
+Lethal Current,aspect,C,"blind, jolt, melee"
+Lightning Surge,aspect,B,"amplified, bolt, melee, resist"
+Mindspun Invocation,aspect,C,"melee, suspend, tangle, threadling"
+Offensive Bulwark,aspect,D,"grenade, melee, overshield, resist"
+On the Prowl,aspect,C,"invis, melee, weaken, weapon"
+On Your Mark,aspect,B,"heal, weapon"
+Roaring Flames,aspect,A,"grenade, ignition, melee, scorch, super"
+Shatterdive,aspect,B,"crystal, freeze, frostarmor, resist, shatter"
+Shieldburst,aspect,F,"class, scorch, weapon"
+Sol Invictus,aspect,A,"grenade, heal, melee, scorch, sunspot, super"
+Soul Siphon,aspect,B,"melee, overshield, resist, weapon"
+Storm's Keep,aspect,B,"bolt, class, weapon"
+Stylish Executioner,aspect,B,"invis, melee, weaken"
+Tectonic Harvest,aspect,B,"frostarmor, melee, resist, shard, shatter, weapon"
+Tempest Strike,aspect,S,"bolt, jolt, melee, resist"
+The Wanderer,aspect,F,"suspend, tangle, threadling"
+Threaded Specter,aspect,A,"class, resist, threadling"
+Touch of Flame,aspect,D,heal
+Touch of Thunder,aspect,C,"bolt, ionic, jolt"
+Touch of Winter,aspect,B,"crystal, freeze, shatter"
+Trapper's Ambush,aspect,D,"class, devour, invis, weaken"
+Unbreakable,aspect,A,"devour, grenade, orb, overshield, resist, super"
+Vanishing Step,aspect,D,"class, invis"
+Weaver's Call,aspect,C,threadling
+Weavewalk,aspect,S,"airborne, melee, orb, resist, threadling, weapon, wovenmail"
+Whirling Maelstrom,aspect,B,"tangle, unravel"
+Widow's Silk,aspect,F,"grenade, melee"
+Winter's Shroud,aspect,A,"resist, slow"
+Echo of Cessation,fragment,C,"breach, melee, volatile"
+Echo of Dilation,fragment,D,
+Echo of Domineering,fragment,C,"breach, suppress, weapon"
+Echo of Exchange,fragment,D,"grenade, melee"
+Echo of Expulsion,fragment,D,
+Echo of Harvest,fragment,C,"breach, orb, super, weaken"
+Echo of Instability,fragment,D,"grenade, volatile, weapon"
+Echo of Leeching,fragment,C,"heal, melee"
+Echo of Obscurity,fragment,A,"invis, melee"
+Echo of Persistence,fragment,B,"devour, invis, overshield, resist"
+Echo of Provision,fragment,C,"grenade, melee"
+Echo of Remnants,fragment,C,
+Echo of Reprisal,fragment,C,super
+Echo of Starvation,fragment,S,"breach, devour, orb"
+Echo of Undermining,fragment,A,"grenade, weaken"
+Echo of Vigilance,fragment,A,"heal, overshield, resist"
+Ember of Ashes,fragment,B,scorch
+Ember of Beams,fragment,D,super
+Ember of Benevolence,fragment,S,"grenade, heal, melee, radiant"
+Ember of Blistering,fragment,C,"grenade, ignition"
+Ember of Char,fragment,B,"ignition, scorch"
+Ember of Combustion,fragment,C,"firesprite, ignition, super"
+Ember of Empyrean,fragment,C,"heal, radiant"
+Ember of Eruption,fragment,C,ignition
+Ember of Mercy,fragment,C,"firesprite, heal"
+Ember of Resolve,fragment,C,"grenade, heal"
+Ember of Searing,fragment,B,"firesprite, melee, scorch"
+Ember of Singeing,fragment,B,scorch
+Ember of Solace,fragment,B,"heal, radiant"
+Ember of Tempering,fragment,D,"firesprite, heal, weapon"
+Ember of Torches,fragment,A,"melee, radiant"
+Ember of Wonder,fragment,D,"ignition, orb, super"
+Facet of Awakening,fragment,C,super
+Facet of Balance,fragment,C,"grenade, melee"
+Facet of Blessing,fragment,C,"heal, melee, transcend"
+Facet of Bravery,fragment,D,"grenade, melee, unravel, volatile, weapon"
+Facet of Command,fragment,C,"breach, freeze, shard, suppress, weapon"
+Facet of Courage,fragment,S,melee
+Facet of Dawn,fragment,B,"melee, radiant"
+Facet of Defiance,fragment,D,"jolt, melee, scorch, sever, slow, super, volatile"
+Facet of Devotion,fragment,D,transcend
+Facet of Dominance,fragment,A,"grenade, jolt, weaken"
+Facet of Generosity,fragment,B,"orb, super, transcend"
+Facet of Grace,fragment,D,"super, transcend, weapon"
+Facet of Honor,fragment,D,"shard, tangle, transcend"
+Facet of Hope,fragment,B,
+Facet of Justice,fragment,D,transcend
+Facet of Mending,fragment,C,"grenade, heal"
+Facet of Protection,fragment,A,resist
+Facet of Purpose,fragment,S,"bolt, frostarmor, heal, orb, overshield, resist, super, wovenmail"
+Facet of Ruin,fragment,C,"crystal, ignition, shatter"
+Facet of Sacrifice,fragment,C,transcend
+Facet of Solitude,fragment,B,"sever, transcend"
+Spark of Amplitude,fragment,C,"amplified, orb, super"
+Spark of Beacons,fragment,A,"amplified, blind, weapon"
+Spark of Brilliance,fragment,D,blind
+Spark of Discharge,fragment,B,"bolt, ionic, weapon"
+Spark of Feedback,fragment,C,melee
+Spark of Focus,fragment,F,
+Spark of Frequency,fragment,B,"amplified, bolt, melee, weapon"
+Spark of Haste,fragment,F,heal
+Spark of Instinct,fragment,F,"heal, jolt"
+Spark of Ions,fragment,C,"bolt, ionic, jolt"
+Spark of Magnitude,fragment,C,grenade
+Spark of Momentum,fragment,D,"bolt, weapon"
+Spark of Recharge,fragment,F,"grenade, heal, melee"
+Spark of Resistance,fragment,S,resist
+Spark of Shock,fragment,B,"grenade, jolt"
+Spark of Volts,fragment,F,"amplified, bolt, melee"
+Thread of Ascent,fragment,B,"grenade, weapon"
+Thread of Binding,fragment,F,"super, suspend"
+Thread of Continuity,fragment,D,
+Thread of Evolution,fragment,S,threadling
+Thread of Finality,fragment,D,"melee, threadling"
+Thread of Fury,fragment,B,"melee, tangle"
+Thread of Generation,fragment,A,grenade
+Thread of Isolation,fragment,B,sever
+Thread of Mind,fragment,D,suspend
+Thread of Propagation,fragment,D,"melee, unravel, weapon"
+Thread of Rebirth,fragment,D,"threadling, weapon"
+Thread of Transmutation,fragment,F,"resist, tangle, weapon, wovenmail"
+Thread of Warding,fragment,B,"orb, resist, wovenmail"
+Thread of Wisdom,fragment,D,"orb, super, suspend"
+Whisper of Bonds,fragment,D,"freeze, orb, super"
+Whisper of Chains,fragment,B,"frostarmor, resist, shard"
+Whisper of Chill,fragment,D,"shard, weapon"
+Whisper of Conduction,fragment,B,shard
+Whisper of Durance,fragment,C,slow
+Whisper of Fissures,fragment,D,"crystal, shatter"
+Whisper of Fractures,fragment,D,"frostarmor, melee, resist, shatter"
+Whisper of Hedrons,fragment,F,"freeze, heal"
+Whisper of Hunger,fragment,B,"melee, shard"
+Whisper of Impetus,fragment,B,"melee, weapon"
+Whisper of Refraction,fragment,C,
+Whisper of Rending,fragment,C,"crystal, freeze"
+Whisper of Reversal,fragment,F,"frostarmor, melee, resist, slow"
+Whisper of Rime,fragment,A,"frostarmor, resist"
+Whisper of Shards,fragment,B,"crystal, grenade, shatter"
+Whisper of Torment,fragment,B,"frostarmor, grenade, resist"
+Acrobat's Dodge,ability,C,radiant
+Amplified,ability,C,"amplified, resist"
+Amplitude,ability,C,"amplified, orb, super"
+Arc Staff,ability,C,"airborne, blind, bolt, class, resist, super"
+Arcane Needle,ability,C,"melee, unravel"
+Arcbolt Grenade,ability,C,
+Ascent,ability,C,"airborne, grenade, weapon"
+Ashes,ability,C,scorch
+Awakening,ability,C,"super, tangle"
+Axion Bolt,ability,C,slow
+Balance,ability,C,"grenade, melee"
+Ball Lightning,ability,C,amplified
+Ballistic Slam,ability,C,"airborne, bolt, melee, super"
+Beacons,ability,C,"amplified, blind, weapon"
+Beams,ability,C,"melee, super"
+Benevolence,ability,C,"class, grenade, heal, melee, overshield, radiant, resist"
+Binding,ability,C,"super, suspend"
+Blade Barrage,ability,C,"melee, resist, scorch, super"
+Bladefury,ability,C,"melee, resist, super, suspend"
+Blessing,ability,C,"heal, melee, transcend"
+Blind,ability,C,blind
+Blistering,ability,C,"grenade, ignition"
+Bolt Charge,ability,C,"bolt, crystal, freeze, ignition, jolt, melee, scorch, shatter, suspend, tangle, threadling, unravel, volatile, weapon"
+Bonds,ability,C,"freeze, orb, super"
+Bravery,ability,C,"grenade, melee, unravel, volatile, weapon"
+Brilliance,ability,C,"blind, weapon"
+Burning Maul,ability,C,"resist, scorch, sunspot, super"
+Celestial Fire,ability,C,scorch
+Cessation,ability,C,"breach, melee, volatile"
+Chain Lightning,ability,C,"amplified, jolt, melee"
+Chains,ability,C,"frostarmor, resist, shard"
+Chaos Reach,ability,C,"jolt, resist, super"
+Char,ability,C,"ignition, scorch"
+Chill,ability,C,"shard, weapon"
+Coldsnap Grenade,ability,C,"freeze, grenade, slow"
+Combination Blow,ability,C,"class, heal, melee"
+Combustion,ability,C,"firesprite, ignition, super, weapon"
+Command,ability,C,"airborne, breach, freeze, shard, suppress, weapon"
+Conduction,ability,C,shard
+Continuity,ability,C,
+Courage,ability,C,melee
+Cure,ability,C,heal
+Dawn,ability,C,"melee, radiant"
+Daybreak,ability,C,"resist, scorch, super"
+Defiance,ability,C,"jolt, melee, scorch, sever, slow, super, volatile"
+Devotion,ability,C,transcend
+Devour,ability,C,"devour, grenade"
+Dilation,ability,C,
+Discharge,ability,C,"bolt, ionic, weapon"
+Disorienting Blow,ability,C,"amplified, blind, bolt"
+Dominance,ability,C,"grenade, jolt, weaken"
+Domineering,ability,C,"breach, suppress, weapon"
+Durance,ability,C,slow
+Duskfield Grenade,ability,C,slow
+Electrified Snare,ability,C,"grenade, jolt, super, suspend"
+Elemental Effects,ability,C,"amplified, blind, bolt, breach, class, devour, firesprite, freeze, frostarmor, heal, ignition, invis, ionic, jolt, overshield, radiant, resist, scorch, sever, shard, shatter, slow, suppress, suspend, tangle, threadling, unravel, volatile, weaken, wovenmail"
+Empowering Rift,ability,C,"class, grenade, melee, resist, weapon"
+Empyrean,ability,C,"heal, radiant"
+Eruption,ability,C,ignition
+Evolution,ability,C,threadling
+Exchange,ability,C,"grenade, melee"
+Expulsion,ability,C,
+Feedback,ability,C,melee
+Finality,ability,C,"melee, threadling"
+Firebolt Grenade,ability,C,scorch
+Firesprite,ability,C,"firesprite, grenade"
+Fissures,ability,C,"crystal, shatter"
+Fists of Havoc,ability,C,"blind, resist, super"
+Flashbang Grenade,ability,C,blind
+Flux Grenade,ability,C,
+Focus,ability,C,class
+Fractures,ability,C,"frostarmor, melee, resist, shatter"
+Freeze,ability,C,"class, freeze, heal, melee, shatter, super, weapon"
+Freezing Singularity,ability,C,"grenade, slow, suppress"
+Frenzied Blade,ability,C,"melee, sever"
+Frequency,ability,C,"amplified, bolt, melee, weapon"
+Frost Armor,ability,C,"frostarmor, resist, super"
+Fury,ability,C,"melee, tangle"
+Fusion Grenade,ability,C,scorch
+Gambler's Dodge,ability,C,"class, melee"
+Gathering Storm,ability,C,"jolt, resist, super"
+Generation,ability,C,grenade
+Generosity,ability,C,"orb, super, transcend"
+Glacial Quake,ability,C,"crystal, freeze, melee, orb, resist, shatter, slow, super"
+Glacier Grenade,ability,C,"crystal, grenade, shatter"
+Grace,ability,C,"super, transcend, weapon"
+Grapple,ability,C,"airborne, grenade, melee, super, tangle, unravel"
+Grapple Tangle,ability,C,"grenade, melee, tangle"
+Hailfire Spike,ability,C,"grenade, scorch, slow"
+Hammer of Sol,ability,C,"airborne, resist, super"
+Hammer Strike,ability,C,"ignition, melee, scorch"
+Harvest,ability,C,"breach, orb, super, weaken"
+Haste,ability,C,heal
+Healing Grenade,ability,C,"heal, orb"
+Healing Rift,ability,C,"class, heal, overshield, resist"
+Hedrons,ability,C,"freeze, heal"
+Honor,ability,C,"breach, firesprite, ionic, shard, tangle, transcend"
+Hope,ability,C,class
+Hunger,ability,C,"melee, shard"
+Ignition,ability,C,"grenade, ignition, melee, scorch"
+Impetus,ability,C,"melee, weapon"
+Incendiary Grenade,ability,C,"grenade, scorch"
+Incinerator Snap,ability,C,scorch
+Instability,ability,C,"grenade, volatile, weapon"
+Instinct,ability,C,"heal, jolt"
+Into The Fray,ability,C,"melee, resist, super, tangle, wovenmail"
+Invisibility,ability,C,"class, grenade, heal, invis, melee, super, weapon"
+Ionic Trace,ability,C,"class, grenade, ionic, melee"
+Ions,ability,C,"bolt, ionic, jolt"
+Isolation,ability,C,"sever, weapon"
+Jolted,ability,C,jolt
+Justice,ability,C,transcend
+Knife Trick,ability,C,"melee, scorch, weapon"
+Leeching,ability,C,"heal, melee"
+Lightning Grenade,ability,C,
+Lightweight Knife,ability,C,"melee, radiant, weapon"
+Magnetic Grenade,ability,C,
+Magnitude,ability,C,grenade
+Marksman's Dodge,ability,C,"class, weapon"
+Mending,ability,C,"grenade, heal"
+Mercy,ability,C,"firesprite, heal"
+Mind,ability,C,"class, suspend"
+Momentum,ability,C,"bolt, weapon"
+Needlestorm,ability,C,"resist, super, threadling"
+Nova Bomb: Cataclysm,ability,C,"airborne, resist, slow, super"
+Nova Warp,ability,C,"resist, super, volatile, weaken"
+Obscurity,ability,C,"invis, melee"
+On The Prowl,ability,C,"class, grenade, invis, melee, weaken, weapon"
+Overshield,ability,C,"heal, overshield, resist"
+Penumbral Blast,ability,C,freeze
+Persistence,ability,C,"devour, invis, overshield, resist"
+Phantom Surge,ability,C,"melee, overshield, resist"
+Phoenix Dive,ability,C,"heal, scorch"
+Pocket Singularity,ability,C,"melee, volatile"
+Propagation,ability,C,"melee, unravel, weapon"
+Protection,ability,C,"resist, transcend"
+Provision,ability,C,"grenade, melee, super, suppress"
+Proximity Explosive Knife,ability,C,"melee, weapon"
+Pulse Grenade,ability,C,
+Purpose,ability,C,"bolt, frostarmor, heal, orb, overshield, resist, super, wovenmail"
+Radiant,ability,C,"radiant, weapon"
+Rally Barricade,ability,C,"class, resist, weapon"
+Rebirth,ability,C,"threadling, weapon"
+Recharge,ability,C,"grenade, heal, melee"
+Refraction,ability,C,class
+Remnants,ability,C,grenade
+Rending,ability,C,"crystal, freeze, weapon"
+Reprisal,ability,C,super
+Resistance,ability,C,resist
+Restoration,ability,C,"class, grenade, heal"
+Reversal,ability,C,"frostarmor, melee, resist, slow"
+Rime,ability,C,"frostarmor, resist"
+Ruin,ability,C,"crystal, ignition, shatter"
+Sacrifice,ability,C,transcend
+Scatter Grenade,ability,C,
+Scorch,ability,C,"ignition, scorch"
+Searing,ability,C,"firesprite, melee, scorch"
+Seismic Strike,ability,C,"amplified, blind, melee"
+Sentinel Shield,ability,C,"airborne, grenade, orb, overshield, resist, super, weapon"
+Sever,ability,C,
+Shackle Grenade,ability,C,suspend
+Shards,ability,C,"crystal, grenade"
+Shatter,ability,C,"freeze, shatter"
+Shatter Grenade,ability,C,"freeze, slow"
+Shield Bash,ability,C,"melee, overshield, resist, suppress"
+Shield Throw,ability,C,"overshield, resist"
+Shiver Strike,ability,C,"crystal, melee, shatter, slow"
+Shock,ability,C,"grenade, jolt"
+Silence & Squall,ability,C,"freeze, resist, slow, super"
+Silkstrike,ability,C,"class, grenade, resist, super"
+Singeing,ability,C,"class, scorch"
+Skip Grenade,ability,C,
+Slicewire,ability,C,"grenade, sever"
+Slow,ability,C,"freeze, slow, weapon"
+Snare Bomb,ability,C,"invis, weaken"
+Solace,ability,C,"heal, radiant"
+Solar Grenade,ability,C,scorch
+Solitude,ability,C,"sever, transcend, weapon"
+Song of Flame,ability,C,"class, grenade, heal, melee, radiant, resist, scorch, super, weapon"
+Spectral Blades,ability,C,"invis, melee, resist, super, weaken"
+Starvation,ability,C,"breach, devour, orb"
+Stasis Crystal,ability,C,"crystal, freeze, heal, slow"
+Stasis Shard,ability,C,"crystal, freeze, frostarmor, melee, resist, shard, shatter, slow"
+Storm Grenade,ability,C,
+Storm's Edge,ability,C,"melee, resist, super"
+Stormtrance,ability,C,"jolt, resist, super"
+Suppression,ability,C,"grenade, melee, super, suppress, transcend"
+Suppressor Grenade,ability,C,suppress
+Suspend,ability,C,"airborne, slow, suspend, weapon"
+Swarm Grenade,ability,C,scorch
+Tangle,ability,C,"grenade, sever, suspend, tangle, unravel"
+Tempering,ability,C,"airborne, firesprite, heal, weapon"
+Thermite Grenade,ability,C,scorch
+Threaded Spike,ability,C,"melee, resist, sever, wovenmail"
+Threadling,ability,C,"melee, threadling, weapon"
+Threadling Grenade,ability,C,"airborne, threadling"
+Throwing Hammer,ability,C,"heal, melee"
+Thruster,ability,C,
+Thunderclap,ability,C,"melee, resist"
+Thundercrash,ability,C,"resist, super"
+Torches,ability,C,"melee, radiant"
+Torment,ability,C,"frostarmor, grenade, resist"
+Towering Barricade,ability,C,"class, resist"
+Transcendence,ability,C,"grenade, melee, resist, transcend, weapon"
+Transmutation,ability,C,"resist, tangle, weapon, wovenmail"
+Tripmine Grenade,ability,C,scorch
+Twilight Arsenal,ability,C,"melee, resist, super, weaken, weapon"
+Undermining,ability,C,"grenade, weaken"
+Unravel,ability,C,unravel
+Unraveling Rounds,ability,C,"unravel, weapon"
+Vigilance,ability,C,"heal, overshield, resist"
+Void Breach,ability,C,"breach, class"
+Void Spike,ability,C,
+Void Wall,ability,C,
+Volatile,ability,C,volatile
+Volatile Rounds,ability,C,"volatile, weapon"
+Volts,ability,C,"amplified, bolt, melee"
+Vortex Grenade,ability,C,
+Warding,ability,C,"orb, resist, wovenmail"
+Weaken,ability,C,"slow, weaken"
+Weighted Throwing Knife,ability,C,"class, ignition, melee, scorch, weapon"
+Well of Radiance,ability,C,"freeze, heal, orb, radiant, resist, scorch, shatter, super, weapon"
+Winter's Wrath,ability,C,"crystal, freeze, resist, shard, shatter, super"
+Wisdom,ability,C,"orb, super, suspend"
+Withering Blade,ability,C,"melee, slow"
+Wonder,ability,C,"ignition, orb, super"
+Woven Mail,ability,C,"melee, resist, super, weapon, wovenmail"

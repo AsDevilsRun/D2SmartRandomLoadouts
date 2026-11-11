@@ -1,0 +1,142 @@
+Exotic,Exotic perk,Elements,Supers,Grenades,Melees,Class abilities,Movement,Weapon types,Weapons,Force weapon,Or Weapon,Aspects,Prismatic OK,Force element ability,Prismatic needs,Focus,Notes
+Abeyant Leap,Puppeteer's Control,Strand,,,,,,,,,,Drengr's Lash,Y,,,Class,Mentions class ability: Thruster
+ACD/0 Feedback Fence,Fury Conductors,,,,,,,,,,,,Y,,,Melee,Hand-corrected
+Actium War Rig,Auto-Loading Link,,,,,,,"Auto Rifle, Machine Gun",,Y,,,Y,,,Weapons,
+An Insurmountable Skullfort,Transfusion Matrix,Arc,,,,,,,,,,,Y,,,Melee,Hand-corrected
+Antaeus Wards,Reflective Vents,,,,,,,,,,,,Y,,,Class,
+Apotheosis Veil,,,,,,,,,,,,,Y,,,"Melee, Grenade",
+Arbor Warden,Barri-nade,,,,,,,,,,,,Y,,,Class,Hand-corrected; works with any class ability (non-barricades default to Towering Barricade); inherits Bastion or Drengr's Lash if equipped
+Armamentarium,And Another Thing,,,,,,,,,,,,Y,,,Grenade,
+Ashen Wake,Bring the Heat,Solar,,Fusion Grenade,,,,,,,,,N,,,Grenade,Prismatic N: Prismatic Titan lacks Fusion Grenade; Hand-corrected
+Assassin's Cowl,Vanishing Execution,,,,,,,,,,,,Y,,,Melee,Hand-corrected; works with any subclass (powered melee kills or finishers)
+Astrocyte Verse,Move to Survive,Void,,,,,Blink,,,,,,Y,,,Super,"Hand-corrected; needs Blink (Voidwalker or Prismatic); Nova Warp is a bonus, not required"
+Athrys's Embrace,Skittering Stinger,Solar,,,Weighted Throwing Knife,,,,,,,,N,,,Melee,Prismatic N: Prismatic Hunter lacks Weighted Throwing Knife
+Balance of Power,Double Down,Strand,,,,,,,,,,Threaded Specter,Y,,,Class,
+Ballidorse Wrathweavers,Hearts of Ice,Stasis,Winter's Wrath,,,,,,,,,,Y,,,Super,Prismatic Y: Prismatic has the required items; review; Hand-corrected
+Blastwave Striders,Blastwave Striders,Stasis,,,Shiver Strike,,,,,,,,Y,,,Melee,Prismatic Y: Prismatic has the required items; review; Hand-corrected
+Blight Ranger,Voltaic Mirror,Arc,Arc Staff,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Hunter lacks Arc Staff
+Boots of the Assembler,Blessing of Order,,,,,"Healing Rift, Empowering Rift",,,,,,,Y,,,Class,"Mentions class ability: Empowering Rift, Healing Rift; Hand-corrected"
+Briarbinds,One with the Void,Void,,,,,,,,,,Child of the Old Gods,N,,,,"Prismatic N: Prismatic Warlock lacks Child of the Old Gods; Hand-corrected (requirement from player knowledge, not the Compendium)"
+Cadmus Ridge Lancecap,Lancer's Vigil,Stasis,Glacial Quake,,,,,,,,,Diamond Lance,Y,,,"Class, Weapons",Hand-corrected; text requires a Stasis super equipped
+Caliban's Hand,Roast 'Em,Solar,,,"Knife Trick, Proximity Explosive Knife",,,,,,,,Y,,,Melee,
+Celestial Nighthawk,Hawkeye Hack,Solar,"Golden Gun: Deadshot, Golden Gun: Marksman",,,,,,Still Hunt,N,Y,,Y,,,Super,
+Cenotaph Mask,High Priority,,,,,,,Trace Rifle,,Y,,,Y,,,Weapons,
+Chromatic Fire,Crystalline Transistor,,,,,,,,,,,,Y,,,"Super, Weapons",
+Citan's Ramparts,Assault Barricade,,,,,Towering Barricade,,,,,,,Y,,,Class,Mentions class ability: Towering Barricade
+Claws of Ahamkara,The Whispers,,,,,,,,,,,,Y,,,Melee,
+Contraverse Hold,Chaotic Exchanger,Void,,,,,,,,,,Chaos Accelerant,N,,,Grenade,Prismatic N: Prismatic Warlock lacks Chaos Accelerant
+Crest of Alpha Lupi,Survival Well,,,,,,,,,,,,Y,,,Class,Mentions class ability: Thruster; Hand-corrected
+Crown of Tempests,Conduction Tines,Arc,,,,,,,,,,,Y,,,"Grenade, Melee","Hand-corrected; works on Prismatic via Arc abilities (Chain Lightning, Storm Grenade)"
+Cuirass of the Falling Star,Glorious Charge,Arc,Thundercrash,,,,,,,,,,Y,,,Super,
+Cyrtarachne's Facade,Acrobat's Focus,Strand,,Grapple,,,,,,,,,Y,,,Grenade,Hand-corrected; triggers on Grappling (Threadrunner or Prismatic Hunter)
+Dawn Chorus,Rites of Ember,Solar,Daybreak,,,,,,,,,,N,,,"Melee, Super",Prismatic N: Prismatic Warlock lacks Daybreak
+Deimosuffusion,Malevolent Grasp,Strand,Needlestorm,,,"Healing Rift, Empowering Rift",,,,,,,Y,,,Class,"Hand-corrected; needs a Strand super (Needlestorm, on Broodweaver or Prismatic Warlock)"
+Doom Fang Pauldron,Horns of Doom,Void,Sentinel Shield,,Shield Throw,,,,,,,,Y,,Shield Throw,"Super, Melee","Hand-corrected; full loop on Sentinel (Sentinel Shield + Shield Throw); on Prismatic, half works with Shield Throw"
+Dunemarchers,Linear Actuators,,,,,,,,,,,,Y,,,Melee,Hand-corrected; any subclass (any direct melee hit after sprinting; the Arc chain comes from the exotic)
+Eternal Warrior,Resolute,Arc,Fists of Havoc,,,,,,,,,,N,,,"Weapons, Super",Prismatic N: Prismatic Titan lacks Fists of Havoc
+Eunoia,Consul's Pitch,Solar,,,,,,,,,,Hellion,Y,,,,
+Eye of Another World,Cerebral Uplink,,,,,,,,,,,,Y,,,Super,Hand-corrected
+Fallen Sunstar,Ionic Conductor,Arc,,,,,,,,,,,Y,N,,"Melee, Grenade","Hand-corrected; Prismatic OK: works off Ionic Traces, no Arc grenade or melee needed"
+Felwinter's Helm,Warlord's End,,,,,,,,,,,,Y,,,Melee,Hand-corrected; any subclass
+Foetracer,Relentless Tracker,,,,,,,,,,,,Y,,,Weapons,
+Fortune's Favor,Kismet,,,,,,,,,,,,Y,,,Weapons,Hand-corrected
+Fr0st-EE5,Rapid Cooldown,,,,,,,,,,,,Y,,,"Melee, Grenade",Hand-corrected
+Gemini Jester,Misdirection,,,,,,,,,,,,Y,,,Class,
+Geomag Stabilizers,,Arc,Chaos Reach,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Warlock lacks Chaos Reach
+Getaway Artist,Dynamic Duo,Arc,,"Arcbolt Grenade, Flashbang Grenade, Flux Grenade, Lightning Grenade, Pulse Grenade, Skip Grenade, Storm Grenade",,,,,,,,,Y,,,Grenade,Hand-corrected; needs any Arc grenade (Storm Grenade on Prismatic); Arc Soul is a bonus
+Gifted Conviction,The Gift of Certainty,Arc,,,,,,,,,,"Ascension, Tempest Strike",Y,,,,
+Graviton Forfeit,Vanishing Shadow,Void,,,,,,,,,,,Y,,Stylish Executioner,"Melee, Grenade",Hand-corrected; works anywhere but best on Void; on Prismatic needs Stylish Executioner for invisibility
+Gwisin Vest,Roving Assassin,Void,Spectral Blades,,,,,,,,,,Y,,Stylish Executioner,Super,"Hand-corrected; Spectral Blades on Nightstalker; on Prismatic, half works with Stylish Executioner"
+Gyrfalcon's Hauberk,"See Me, Feel Me",Void,,,,,,,,,,,Y,,Stylish Executioner,Class,Hand-corrected; on Prismatic needs Stylish Executioner for invisibility
+Hallowfire Heart,Sunfire Furnace,Solar,"Hammer of Sol, Burning Maul",,,,,,,,,,Y,,,"Super, Grenade",Hand-corrected; needs a Solar super equipped (Prismatic Titan has Hammer of Sol)
+Hazardous Propulsion,Danger Close,,,,,,,,,,,,Y,,,"Weapons, Class",Mentions class ability: Thruster
+Heart of Inmost Light,Overflowing Light,,,,,,,,,,,,Y,,,"Grenade, Melee, Class",Hand-corrected
+Helm of Saint-14,Starless Night,Void,Ward of Dawn,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Titan lacks Ward of Dawn
+Hoarfrost-Z,Glacial Fortification,Stasis,Glacial Quake,,,,,,,,,,Y,,,Class,"Hand-corrected; needs a Stasis super (Glacial Quake, on Behemoth or Prismatic)"
+Icefall Mantle,Glacial Guard,Stasis,Glacial Quake,,,"Towering Barricade, Rally Barricade",,,,,,,Y,,,Class,"Hand-corrected; needs a Stasis super (Glacial Quake, on Behemoth or Prismatic) and a barricade class ability"
+Karnstein Armlets,Vampire's Caress,,,,,,,,,,,,Y,,,Melee,Hand-corrected
+Khepri's Horn,Solar Rampart,Solar,"Hammer of Sol, Burning Maul",,,"Towering Barricade, Rally Barricade",,,,,,,Y,,,Class,Hand-corrected; needs a Solar super equipped (Prismatic Titan has Hammer of Sol)
+Khepri's Sting,Touch of Venom,Void,,,Snare Bomb,,,,,,,,Y,,,Melee,
+Knucklehead Radar,Upgraded Sensor Pack,,,,,,,,,,,,Y,,,Weapons,
+Liar's Handshake,Cross Counter,Arc,,,"Combination Blow, Disorienting Blow",,,,,,,,Y,,,Melee,Hand-corrected; text requires an Arc melee equipped (Combination Blow on Prismatic)
+Lion Rampant,Jump Jets,,,,,,,,,,,,Y,,,Weapons,
+Loreley Splendor Helm,Cauterizing Flame,Solar,"Hammer of Sol, Burning Maul",,,"Towering Barricade, Rally Barricade",,,,,,,Y,,,Class,Hand-corrected; needs a Solar super equipped (Prismatic Titan has Hammer of Sol)
+Lucky Pants,Illegally Modded Holster,,,,,,,Hand Cannon,,Y,,,Y,,,,
+Lucky Raspberry,Probability Matrix,Arc,,Arcbolt Grenade,,,,,,,,,Y,,,Grenade,
+Lunafaction Boots,Alchemical Etchings,,,,,"Healing Rift, Empowering Rift",,,,,,,Y,,,Weapons,
+Mantle of Battle Harmony,Absorption Cells,,,,,,,,,,,,Y,,,Super,
+Mask of Bakris,Light Shift,"Arc, Stasis","Arc Staff, Gathering Storm, Storm's Edge, Silence and Squall",,,"Gambler's Dodge, Marksman's Dodge",,,,,,,Y,,,Class,"Hand-corrected; text requires a Arc, Stasis super equipped"
+Mask of Fealty,Null Factor,Stasis,,,Withering Blade,,,,,,,,Y,,,Melee,
+Mask of the Quiet One,Dreaded Visage,Void,"Sentinel Shield, Ward of Dawn, Twilight Arsenal",,,,,,,,,,Y,,,"Melee, Grenade",Hand-corrected; text requires a Void super equipped; only the Devour part needs it
+Mataiodoxía,Stylostixis,Strand,,,Arcane Needle,,,,,,,,Y,,,Melee,Hand-corrected
+Mechaneer's Tricksleeves,Spring-Loaded Mounting,,,,,,,Sidearm,,Y,,,Y,,,Weapons,
+Melas Panoplia,Forge Master,Solar,,,Throwing Hammer,,,,,,,,N,,,Melee,Prismatic N: Prismatic Titan lacks Throwing Hammer
+Mk. 44 Stand Asides,"Seriously, Watch Out",,,,,,,,,,,,Y,,,,Hand-corrected
+Moirai,Webcatcher,Strand,,,Threaded Spike,,,,,,,,Y,,,Melee,
+Mothkeeper's Wraps,Winged Eclipse,,,,,,,,,,,,Y,,,Grenade,Hand-corrected
+Necrotic Grip,Grasp of the Devourer,,,,,,,,"Thorn, Osteo Striga",N,,,Y,,,"Melee, Weapons",
+Nezarec's Sin,Abyssal Extractors,Void,,,,,,,,,,,Y,N,,"Melee, Grenade",Hand-corrected; any Void damage kills (weapons count); Soul Siphon is a bonus
+No Backup Plans,Force Multiplier,,,,,,,Shotgun,,Y,,,Y,,,"Weapons, Class",Hand-corrected; any subclass (shotgun/melee; buff list covers every element)
+Nothing Manacles,Scatter Charge,Void,,Scatter Grenade,,,,,,,,,N,,,Grenade,Prismatic N: Prismatic Warlock lacks Scatter Grenade
+Oathkeeper,Adamantine Brace,,,,,,,Combat Bow,,Y,,,Y,,,Weapons,Hand-corrected
+Omnioculus,Beyond The Veil,Void,,,Snare Bomb,,,,,,,,Y,,,Melee,"Hand-corrected; adds a Smoke Bomb charge (Snare Bomb, on Nightstalker or Prismatic)"
+One-Eyed Mask,Vengeance,,,,,,,,,,,,Y,,,,Hand-corrected
+Ophidia Spathe,Scissor Fingers,Solar,,,"Knife Trick, Weighted Throwing Knife, Proximity Explosive Knife",,,,,,,,Y,,,Melee,Mentions class ability: Gambler's Dodge; Hand-corrected
+Ophidian Aspect,Cobra Totemic,,,,,,,,,,,,Y,,,Weapons,
+Orpheus Rig,Uncanny Arrows,Void,"Shadowshot: Deadfall, Shadowshot: Moebius Quiver",,,,,,,,,,Y,,,Super,
+Osmiomancy Gloves,Fervid Coldsnap,Stasis,,Coldsnap Grenade,,,,,,,,,Y,,,Grenade,
+Peacekeepers,Mecha Holster,,,,,,,Submachine Gun,,Y,,,Y,,,,
+Peregrine Greaves,Peregrine Strike,"Arc, Solar, Void",,,"Seismic Strike, Hammer Strike, Shield Bash",,,,,,,,Y,,,Melee,
+Phoenix Cradle,Beacons of Empowerment,Solar,,,,,,,,,,Sol Invictus,N,,,Grenade,Prismatic N: Prismatic Titan lacks Sol Invictus; Hand-corrected
+Phoenix Protocol,Battle-Hearth,Solar,Well of Radiance,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Warlock lacks Well of Radiance
+Point-Contact Cannon Brace,Hammer of the Gods,Arc,,,Thunderclap,,,,,,,,Y,,,Melee,
+Praxic Vestment,Praxic Lift,,,,,,,,,,,,Y,,,Melee,Hand-corrected; any subclass (jetpack; Arc melee kills only add fuel)
+Precious Scars,Kintsugi,,,,,,,,,,,,Y,,,"Super, Weapons",Hand-corrected
+Promethium Spur,Embers of Light,Solar,"Daybreak, Well of Radiance, Song of Flame",,,"Healing Rift, Empowering Rift",,,,,,,Y,,,Class,Hand-corrected; text requires a Solar super equipped
+Pyrogale Gauntlets,Percussive Flames,Solar,Burning Maul,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Titan lacks Burning Maul; Hand-corrected
+Radiant Dance Machines,The Dance,,,,,,,,,,,,Y,,,"Weapons, Class",
+Raiden Flux,Synapse Junctions,Arc,Arc Staff,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Hunter lacks Arc Staff
+Raiju's Harness,Mobius Conduit,Arc,Gathering Storm,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Hunter lacks Gathering Storm
+Rain of Fire,Soaring Fusilier,Solar,,,,,,"Fusion Rifle, Linear Fusion Rifle",,N,,Icarus Dash,N,,,Weapons,Prismatic N: Prismatic Warlock lacks Icarus Dash; Hand-corrected
+Renewal Grasps,Depths of Duskfield,Stasis,,Duskfield Grenade,,,,,,,,,Y,,,Grenade,Prismatic Y: Prismatic has the required items; review; Hand-corrected
+Rime-coat Raiment,Bleak Domain,Stasis,,,,,,,,,,Bleak Watcher,Y,,,Super,
+Sanguine Alchemy,,,,,,"Healing Rift, Empowering Rift",,,,,,,Y,,,Super,Hand-corrected
+Sealed Ahamkara Grasps,Nightmare Fuel,,,,,,,,,,,,Y,,,"Melee, Weapons",Hand-corrected
+Secant Filaments,Devouring Rift,Void,"Nova Bomb: Cataclysm, Nova Bomb: Vortex, Nova Warp",,,Empowering Rift,,,,,,,Y,,,Class,Hand-corrected; text requires a Void super equipped
+Second Chance,Myrmidon's Reach,Void,,,Shield Throw,,,,,,,,Y,,,Melee,Prismatic Y: Prismatic has the required items; review; Hand-corrected
+Aeon Soul,,,,,,,,,,,,,Y,,,Weapons,
+Aeon Swift,,,,,,,,,,,,,Y,,,Weapons,
+Aeon Safe,,,,,,,,,,,,,Y,,,Class,
+Severance Enclosure,Spheromatik Trigger,,,,,,,,,,,,Y,,,Melee,"Hand-corrected; any subclass (powered melee kills or finishers, Kinetic explosion)"
+Shards of Galanor,Sharp Edges,Solar,Blade Barrage,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Hunter lacks Blade Barrage; Hand-corrected
+Shinobu's Vow,New Tricks,Arc,,Skip Grenade,,,,,,,,,N,,,Grenade,Prismatic N: Prismatic Hunter lacks Skip Grenade
+Skull of Dire Ahamkara,Actual Grandeur,Void,"Nova Bomb: Cataclysm, Nova Bomb: Vortex",,,,,,,,,,Y,,,Super,
+Speaker's Sight,The Lost Voice,Solar,,Healing Grenade,,,,,,,,,Y,,,Grenade,Prismatic Y: Prismatic has the required items; review; Hand-corrected
+Speedloader Slacks,Tight Fit,,,,,,,,,,,,Y,,,Weapons,
+St0mp-EE5,Hydraulic Boosters,,,,,,,,,,,,Y,,,,
+Star-Eater Scales,Feast of Light,,,,,,,,,,,,Y,,,Super,Hand-corrected
+Starfire Protocol,Fusion Harness,Solar,,Fusion Grenade,,Empowering Rift,,,,,,,N,,,Grenade,Prismatic N: Prismatic Warlock lacks Fusion Grenade; Mentions class ability: Empowering Rift; Hand-corrected
+Stormdancer's Brace,Ascending Amplitude,Arc,Stormtrance,,,,,,,,,,Y,,,Super,
+Stronghold,Clenched Fist,,,,,,,Sword,,Y,,,Y,,,Weapons,Hand-corrected
+Sunbracers,Helium Spirals,Solar,,Solar Grenade,,,,,,,,,N,,,Grenade,Prismatic N: Prismatic Warlock lacks Solar Grenade
+Swarmers,Swarmers,Strand,,,,,,,,,,,N,,,,Prismatic N: needs Tangles; Prismatic Warlock has no dependable Tangle source (review)
+Synthoceps,Biotic Enhancements,,,,,,,,,,,,Y,,,"Melee, Super",
+The Bombardiers,Parting Gift,,,,,,,,,,,,Y,,,Super,
+The Dragon's Shadow,Wraithmetal Mail,,,,,,,,,,,,Y,,,Weapons,
+The Path of Burning Steps,Firewalker,Solar,,,,,,,,,,Roaring Flames,N,,,Weapons,Prismatic N: Prismatic Titan lacks Roaring Flames; Hand-corrected (Roaring Flame stacks come from the aspect)
+The Sixth Coyote,Double Dodge,,,,,,,,,,,,Y,,,Class,
+The Stag,Dearly Departed,,,,,"Healing Rift, Empowering Rift",,,,,,,Y,,,Class,Mentions class ability: Healing Rift; Hand-corrected
+Transversive Steps,Strange Protractor,,,,,,,,,,,,Y,,,Weapons,
+Triton Vice,Halberdier's Reach,,,,,,,Glaive,,Y,,,Y,,,Weapons,
+Ursa Furiosa,Ursine Guard,Void,Sentinel Shield,,,,,,,,,,N,,,Super,Prismatic N: Prismatic Titan lacks Sentinel Shield; Hand-corrected
+Verity's Brow,The Fourth Magic,,,,,,,,,,,,Y,,,"Weapons, Grenade",Hand-corrected
+Vesper of Radius,Planetary Torrent,Arc,"Stormtrance, Chaos Reach",,,"Healing Rift, Empowering Rift",,,,,,,Y,,,Class,Hand-corrected; text requires a Arc super equipped
+Wings of Sacred Dawn,,Solar,"Daybreak, Well of Radiance, Song of Flame",,,,,,,,,,Y,,,Weapons,Hand-corrected; text requires a Solar super equipped
+Winter's Guile,Warlord's Sigil,,,,,,,,,,,,Y,,,Melee,Hand-corrected
+Wishful Ignorance,Wish-Dragon's Talons,Strand,,,Frenzied Blade,,,,,,,,Y,,,Melee,Prismatic Y: Prismatic has the required items; review; Hand-corrected
+Wormgod Caress,Burning Fists,,,,,,,,,,,,Y,,,Melee,
+Wormhusk Crown,Burning Souls,,,,,,,,,,,,Y,,,Class,Hand-corrected
+Young Ahamkara's Spine,Wish-Dragon Teeth,Solar,,Tripmine Grenade,,,,,,,,,N,,,Grenade,Prismatic N: Prismatic Hunter lacks Tripmine Grenade; Hand-corrected
+Relativism,,Prismatic,,,,,,,,,,,Y,,,,
+Stoicism,,Prismatic,,,,,,,,,,,Y,,,,
+Solipsism,,Prismatic,,,,,,,,,,,Y,,,,
