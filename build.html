@@ -218,7 +218,7 @@ function weaponNeed(soft = false) {
     if (el) elLabel = `a ${DMG_NAME[el]} weapon (matches your ${src})`;
   }
   if (!types.length && !names.length && !el) return null;
-  return { types: types.map(norm), names: names.map(norm), excl: excl.map(norm), el, label: [...types, ...names, ...(elLabel ? [elLabel] : [])].join(" / ") };
+  return { types: types.map(norm), names: names.map(norm), excl: excl.map(norm), el, chance: rule?.weaponChance || 0, label: [...types, ...names, ...(elLabel ? [elLabel] : [])].join(" / ") };
 }
 
 /* Element of the rolled grenade / melee / super / subclass ("Weapon element" sheet column). 0 if unknown. */
@@ -271,7 +271,7 @@ function weaponWeight(i, tags) {
   const boostTypes = superWeaponTypes();
   if (boostTypes.length && meetsNeed(i, { types: boostTypes, names: [] })) w *= SUPER_WEAPON_BOOST;
   const soft = weaponNeed(true);
-  if (soft && meetsNeed(i, soft)) w *= SOFT_WEAPON_BOOST;
+  if (soft && !soft.chance && meetsNeed(i, soft)) w *= SOFT_WEAPON_BOOST; // rows with a Weapon chance get no 4x on their other rolls
   return w;
 }
 
@@ -336,6 +336,11 @@ function rollWeapons(rules, E) {
   const pool = weaponPool(rules, E);
   const tags = buildTags();
   let need = weaponNeed();
+  // "Weapon chance" on a row whose weapons are only preferred: that share of rolls includes one of them for sure.
+  if (!need) {
+    const soft = weaponNeed(true);
+    if (soft?.chance && Math.random() < soft.chance) { need = soft; log(`Weapon chance: including ${soft.label}.`); }
+  }
   if (need && !pool.some(i => meetsNeed(i, need))) {
     const why = [];
     if (E && weaponPool(rules, 0).some(i => meetsNeed(i, need))) why.push(`${DMG_NAME[E]} Monochromatic`);
@@ -782,6 +787,7 @@ async function loadSheet() {
         weaponElement: norm(get(r, "Weapon element")),
         orWeapon: /^y/i.test(get(r, "Or weapon")),
         orWeaponShare: parseShare(get(r, "Or weapon share"), OR_WEAPON_SHARE),
+        weaponChance: parseShare(get(r, "Weapon chance"), 0),
       };
     }
     state.sheet = sheet;
