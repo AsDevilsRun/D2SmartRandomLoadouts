@@ -202,7 +202,7 @@ const exwTags = name => {
 
 /* The exotic armor's weapons. Forced unless its sheet row has Force weapon = N; then they are only weighted (soft = true). */
 function weaponNeed(soft = false) {
-  const types = [], names = [];
+  const types = [], names = [], excl = [];
   const exo = state.roll.armorClass === selectedClass() ? (state.roll.armor || []).find(isExo) : null;
   const rule = exo ? exoticRule(exo.def.name) : null;
   let el = 0, elLabel = "";
@@ -212,12 +212,13 @@ function weaponNeed(soft = false) {
   if (rule && forced !== soft) {
     types.push(...(rule.weaponTypes || []));
     names.push(...(rule.weapons || []));
+    excl.push(...(rule.excludedWeapons || []));
     const src = rule.weaponElement || WEAPON_ELEMENT_DEFAULT[norm(rule.name || exo.def.name)] || "";
     el = src ? rolledAbilityElement(src) : 0;
     if (el) elLabel = `a ${DMG_NAME[el]} weapon (matches your ${src})`;
   }
   if (!types.length && !names.length && !el) return null;
-  return { types: types.map(norm), names: names.map(norm), el, label: [...types, ...names, ...(elLabel ? [elLabel] : [])].join(" / ") };
+  return { types: types.map(norm), names: names.map(norm), excl: excl.map(norm), el, label: [...types, ...names, ...(elLabel ? [elLabel] : [])].join(" / ") };
 }
 
 /* Element of the rolled grenade / melee / super / subclass ("Weapon element" sheet column). 0 if unknown. */
@@ -236,8 +237,9 @@ const isPrismaticRoll = sub => /prismatic/i.test(sub.info?.s?.def?.name || "");
 
 function meetsNeed(i, need) {
   if (!need) return true;
-  if (need.el && i.dmg === need.el) return true;
   const t = weaponTypeKey(i.def.typeName || ""), n = norm(i.def.name);
+  if (need.excl?.includes(n)) return false; // e.g. crossbows are typed "Combat Bow" in the game data
+  if (need.el && i.dmg === need.el) return true;
   return need.names.includes(n) || need.types.some(x => weaponTypeKey(x) === t);
 }
 
@@ -774,7 +776,7 @@ async function loadSheet() {
         classAbilities: splitList(get(r, "Class abilities")), movement: splitList(get(r, "Movement")),
         prism: get(r, "Prismatic OK").toUpperCase(), forceEl: get(r, "Force element ability").toUpperCase(),
         prismNeeds: splitList(get(r, "Prismatic needs")), focus: splitList(get(r, "Focus")),
-        weaponTypes: splitList(get(r, "Weapon types")), weapons: splitList(get(r, "Weapons")),
+        weaponTypes: splitList(get(r, "Weapon types")), weapons: splitList(get(r, "Weapons")), excludedWeapons: splitList(get(r, "Excluded weapons")),
         forceWeapon: (get(r, "Force weapon") || get(r, "Force weapons")).toUpperCase() !== "N",
         weaponElement: norm(get(r, "Weapon element")),
         orWeapon: /^y/i.test(get(r, "Or weapon")),
@@ -834,7 +836,7 @@ function plugMeets(h, g) {
 /* "Or weapon" rows: any subclass works as long as the row's weapon is also rolled (forced when the subclass doesn't meet the row). */
 function orWeaponReady(rule) {
   if (!rule?.orWeapon || !(rule.weaponTypes?.length || rule.weapons?.length)) return false;
-  const need = { types: rule.weaponTypes.map(norm), names: rule.weapons.map(norm) };
+  const need = { types: rule.weaponTypes.map(norm), names: rule.weapons.map(norm), excl: (rule.excludedWeapons || []).map(norm) };
   return weaponPool(state.rules, 0).some(i => meetsNeed(i, need));
 }
 
@@ -1137,7 +1139,7 @@ async function doRoll({ subclass, weapons, armor }) {
     const names = [...new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && isExo(i) && !off.has(i.def.name)).map(i => i.def.name))];
     const weaponsOK = n => {
       const r = exoticRule(n);
-      const need = r.forceWeapon !== false && (r.weaponTypes?.length || r.weapons?.length) ? { types: r.weaponTypes.map(norm), names: r.weapons.map(norm) } : null;
+      const need = r.forceWeapon !== false && (r.weaponTypes?.length || r.weapons?.length) ? { types: r.weaponTypes.map(norm), names: r.weapons.map(norm), excl: (r.excludedWeapons || []).map(norm) } : null;
       return !need || !state.roll.weapons || state.roll.weapons.some(i => meetsNeed(i, need));
     };
     let exact = names.filter(n => fitsRolledSubclass(exoticRule(n), sub) || orWeaponReady(exoticRule(n)));
