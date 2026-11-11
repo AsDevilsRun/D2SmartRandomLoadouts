@@ -272,7 +272,7 @@ function weaponWeight(i, tags) {
   if (boostTypes.length && meetsNeed(i, { types: boostTypes, names: [] })) w *= SUPER_WEAPON_BOOST;
   const soft = weaponNeed(true);
   if (soft && !soft.chance && meetsNeed(i, soft)) w *= SOFT_WEAPON_BOOST; // rows with a Weapon chance get no 4x on their other rolls
-  return w;
+  return w * balanceFactor(i);
 }
 
 /* Like pickByName, but weighted per name (weight of a name = its best copy). */
@@ -380,6 +380,136 @@ function rollWeapons(rules, E) {
   const found = searchWeapons(rules, pool, champs, need && { test: i => meetsNeed(i, need) }, names => weightedSample(names, names.length, nameW));
   if (found) return found;
   throw new Error("Couldn't build a weapon loadout that meets the rules" + (need ? ` with ${need.label}` : "") + (champs.length ? ` stunning ${champList(champs)}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
+}
+
+/* ---------- exotic weapon balancing ----------
+   Each exotic weapon gets a factor so that, within a class, every exotic comes up equally often over many "Roll all" presses,
+   while tags and the synergy rules still decide which builds it lands on (the same idea as balanceSubclassWeights).
+   The factors come from simulating BALANCE_BUILDS builds (exotic armor, subclass, aspects, fragments; nothing equipped),
+   counting every exotic weapon in the game as owned. They are cached in the browser and recomputed only when the class,
+   the data files, the rules, the exotic armor list or the inventory change.
+   Weapons a sheet row names directly (Still Hunt for Celestial Nighthawk, Thorn and Osteo Striga for Necrotic Grip) are
+   picked before any weighting, so balancing can only lower their other appearances. */
+const BALANCE_BUILDS = 400;
+const BALANCE_VERSION = 1;
+const wbal = { key: "", f: null };   // current factors, by normalized exotic name
+let wbalRaw = false;                 // true while simulating: weights without factors
+const balanceFactor = i => {
+  if (wbalRaw || !wbal.f || !isExo(i)) return 1;
+  const f = wbal.f[norm(i.def.name)];
+  return f == null ? 1 : f;
+};
+
+function strHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+function balanceKey(cls) {
+  const r = state.rules;
+  const rules = ["mono", "noDoublePrimary", "noDoubleSpecial", "guaranteedDoubleSpecial", "guaranteedExoticWeapon", "champBarrier", "champOverload", "champUnstoppable"]
+    .map(k => (r[k] ? 1 : 0)).join("");
+  const own = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON || (i.def.itemType === ITEMTYPE_ARMOR && isExo(i))).map(i => i.hash).sort().join(",");
+  const parts = [window.tagDataText || "", window.sheetText || "", rules, [...exoticOff("a")].sort().join("|"), own];
+  return `wbal${BALANCE_VERSION}_${cls}_${state.manifestVersion}_${strHash(parts.join("\u0001"))}`;
+}
+
+/* Every weapon a roll could use for this build, counting every exotic in the game as owned. */
+function balancePool(rules, E) {
+  const ok = i => i.def.ammo && elementOK(i.def.bucket, i.dmg, E);
+  const legs = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && i.def.tier === TIER_LEGENDARY && ok(i));
+  const exos = [...state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && isExo(i)), ...unownedExoticWeapons(new Set())].filter(ok);
+  const pool = [...legs, ...exos];
+  return rules.guaranteedDoubleSpecial ? pool.filter(i => i.def.bucket === BUCKET.POWER || i.def.ammo === 2) : pool;
+}
+
+/* One simulated build's exotic weapon odds, kept as raw weights so they can be re-weighed by any factors:
+   pf = chance the build's weapon rule picks first (required weapon, or its Weapon chance); forced = exotic
+   candidates for that pick plus the total weight of legendary candidates; free = the usual exotic pick. */
+function buildOdds(rules, E, tags, index) {
+  const pool = balancePool(rules, E);
+  const byName = list => {
+    const m = new Map();
+    for (const i of list) { const k = norm(i.def.name); m.set(k, Math.max(m.get(k) || 0, weaponWeight(i, tags))); }
+    return m;
+  };
+  const toIdx = m => [...m].filter(([k]) => index.has(k)).map(([k, w]) => [index.get(k), w]);
+  const free = toIdx(byName(pool.filter(isExo)));
+  const hard = weaponNeed(), soft = weaponNeed(true);
+  const need = hard || (soft?.chance ? soft : null);
+  const pf = hard ? 1 : soft?.chance || 0;
+  if (!need || !pf) return { pf: 0, free };
+  const cands = pool.filter(i => meetsNeed(i, need));
+  if (!cands.length) return { pf: 0, free };
+  const legW = [...byName(cands.filter(i => !isExo(i))).values()].reduce((a, b) => a + b, 0);
+  return { pf, free, forced: toIdx(byName(cands.filter(isExo))), legW };
+}
+
+function balanceShares(builds, f, n) {
+  const s = new Float64Array(n);
+  for (const b of builds) {
+    let tf = 0;
+    for (const [i, w] of b.free) tf += f[i] * w;
+    let toFree = 1;
+    if (b.pf) {
+      let tc = b.legW;
+      for (const [i, w] of b.forced) tc += f[i] * w;
+      if (tc > 0) {
+        for (const [i, w] of b.forced) s[i] += b.pf * f[i] * w / tc;
+        toFree = 1 - b.pf + b.pf * b.legW / tc;
+      }
+    }
+    if (tf > 0) for (const [i, w] of b.free) s[i] += toFree * f[i] * w / tf;
+  }
+  for (let i = 0; i < n; i++) s[i] /= builds.length || 1;
+  return s;
+}
+
+async function ensureWeaponBalance(cid, cls) {
+  const key = balanceKey(cls);
+  if (wbal.key === key) return;
+  const cached = await idb.get(key);
+  if (cached) { wbal.key = key; wbal.f = cached; return; }
+  log(`Balancing exotic weapons for ${CLASS_NAME[cls]} (once, until your data or inventory changes)…`);
+  const t0 = performance.now();
+  const names = [...new Set([...state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && isExo(i)), ...unownedExoticWeapons(new Set())]
+    .filter(i => i.def.ammo).map(i => norm(i.def.name)))];
+  const index = new Map(names.map((n, k) => [n, k]));
+  const saved = { ...state.roll }, quietLog = log, builds = [];
+  wbalRaw = true;
+  try {
+    log = () => {};
+    for (let k = 0; k < BALANCE_BUILDS; k++) {
+      const { info, exotic } = await pickSubclassAndExotic(cid, cls);
+      const sub = await rollSubclass(cid, exotic, info);
+      const exo = state.items.find(i => isExo(i) && i.def.itemType === ITEMTYPE_ARMOR && i.def.classType === cls && i.def.name === exotic);
+      state.roll.subclass = sub; state.roll.armor = exo ? [exo] : []; state.roll.armorClass = cls;
+      const E = await weaponElement(cid);
+      builds.push(buildOdds(state.rules, E, new Set(sub.tags || []), index));
+    }
+  } catch (e) {
+    log = quietLog;
+    log("Couldn't balance exotic weapons; rolling without balancing: " + e.message);
+    wbal.key = key; wbal.f = null;
+    return;
+  } finally {
+    log = quietLog; wbalRaw = false;
+    Object.assign(state.roll, saved);
+  }
+  const n = names.length, f = new Float64Array(n).fill(1), target = 1 / n;
+  for (let it = 0; it < 150; it++) {
+    const s = balanceShares(builds, f, n);
+    for (let i = 0; i < n; i++) if (s[i] > 0) f[i] = Math.min(1000, Math.max(0.001, f[i] * Math.sqrt(target / s[i])));
+  }
+  const out = Object.fromEntries(names.map((nm, i) => [nm, +f[i].toPrecision(4)]));
+  const s = balanceShares(builds, f, n);
+  const hi = names.map((nm, i) => [nm, s[i]]).filter(([, x]) => x > target * 1.15);
+  wbal.key = key; wbal.f = out;
+  await idb.prune(`wbal${BALANCE_VERSION}_${cls}_`, key);
+  await idb.set(key, out);
+  log(`Exotic weapons balanced for ${CLASS_NAME[cls]} (${n} exotics, ${BALANCE_BUILDS} simulated builds, ${Math.round(performance.now() - t0)} ms).` +
+    (hi.length ? ` Above even odds because a synergy row names them: ${hi.map(([nm, x]) => `${nm} ${(100 * x).toFixed(2)}%`).join(", ")}.` : ""));
 }
 
 /* Exotic first, then any set-bonus pieces, then random legendaries for the rest. Runs after weapons so set bonuses can weigh them. */
@@ -612,6 +742,7 @@ async function loadTagData() {
       const res = await fetch(`data/${f}.csv`, { cache: "no-cache" });
       if (!res.ok) throw new Error(`data/${f}.csv: HTTP ${res.status}`);
       text[f] = await res.text();
+      window.tagDataText = TAG_FILES.map(x => text[x] || "").join("\n");
     }));
   } catch (e) {
     log("Couldn't load the tag files; rolls won't be weighted by synergy tags: " + e.message);
@@ -767,7 +898,9 @@ async function loadSheet() {
     try { [a, b] = await Promise.all([timed(SHEET.synergy), timed(SHEET.focus)]); }
     catch (e) { throw new Error(e.name === "AbortError" ? "the file didn't load within 15 seconds" : "the download failed (" + e.message + ")"); }
     if (!a.ok) throw new Error(`${SHEET.synergy}: HTTP ${a.status}`);
-    const rows = parseCSV(await a.text());
+    const synText = await a.text();
+    window.sheetText = synText;
+    const rows = parseCSV(synText);
     const head = (rows[0] || []).map(norm);
     const get = (r, name) => { const i = head.indexOf(norm(name)); return i >= 0 ? (r[i] || "").trim() : ""; };
     const sheet = {};
@@ -1156,6 +1289,7 @@ function balanceSubclassWeights(options, infos) {
 
 async function rerollOne(bucket) {
   await ensureChampData();
+  await ensureWeaponBalance(selectedChar(), selectedClass());
   state.roll.weapons = rerollWeaponSlot(state.rules, await weaponElement(selectedChar()), bucket);
   if (state.rules.mods && state.roll.armor) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
@@ -1166,6 +1300,7 @@ async function rerollOne(bucket) {
 
 async function doRoll({ subclass, weapons, armor }) {
   await ensureChampData();
+  await ensureWeaponBalance(selectedChar(), selectedClass());
   const cid = selectedChar();
   const cls = selectedClass();
   const rules = state.rules;
