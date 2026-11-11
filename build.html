@@ -166,605 +166,25 @@
 <script>
 "use strict";
 
-/* ===================== CONFIG ===================== */
-const CONFIG = {
-  apiKey:   "9c6618593f804a6a9fff215fa6804154",
-  clientId: "56646",
+const PAGE = {
+  rulesKey: "d2b_rules",
+  defaultRules: { unownedExotics: false, noDoublePrimary: true, noDoubleSpecial: true, guaranteedDoubleSpecial: false, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mods: true, mono: false },
+  forcedRules: { guaranteedExoticArmor: true },
+  extraState: { synergy: {}, sheet: null, focusMap: {} },
+  returnTo: "build.html",
+  busyIds: ["btnRollArmorSub"],
 };
+</script>
+<script src="core.js?v=2"></script>
+<script>
+"use strict";
+
 /* Your exotic synergy sheet, published to the web as CSV. */
 const SHEET = {
   synergy: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfXZbjSV7dMZ1bjJxOs0CL3tA9JJ3VhUtXydz3lWDIMrn4Gy1WinkuJMJlVEOHqIjcIxcSbZ694fBn/pub?gid=1212780051&single=true&output=csv",
   focus:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfXZbjSV7dMZ1bjJxOs0CL3tA9JJ3VhUtXydz3lWDIMrn4Gy1WinkuJMJlVEOHqIjcIxcSbZ694fBn/pub?gid=273743486&single=true&output=csv",
 };
 /* ================================================== */
-
-const BUNGIE = "https://www.bungie.net";
-const API = BUNGIE + "/Platform";
-const BUCKET = {
-  KINETIC: 1498876634, ENERGY: 2465295065, POWER: 953998645,
-  HELMET: 3448274439, GAUNTLETS: 3551918588, CHEST: 14239492, LEGS: 20886954, CLASS: 1585787867,
-  SUBCLASS: 3284755031,
-};
-const WEAPON_BUCKETS = [BUCKET.KINETIC, BUCKET.ENERGY, BUCKET.POWER];
-const ARMOR_BUCKETS = [BUCKET.HELMET, BUCKET.GAUNTLETS, BUCKET.CHEST, BUCKET.LEGS, BUCKET.CLASS];
-const SLOT_NAME = {
-  [BUCKET.KINETIC]: "Kinetic", [BUCKET.ENERGY]: "Energy", [BUCKET.POWER]: "Power",
-  [BUCKET.HELMET]: "Helmet", [BUCKET.GAUNTLETS]: "Gauntlets", [BUCKET.CHEST]: "Chest",
-  [BUCKET.LEGS]: "Legs", [BUCKET.CLASS]: "Class Item",
-};
-const AMMO_NAME = { 1: "Primary", 2: "Special", 3: "Heavy" };
-const CLASS_NAME = { 0: "Titan", 1: "Hunter", 2: "Warlock" };
-const DMG_NAME = { 1: "Kinetic", 2: "Arc", 3: "Solar", 4: "Void", 6: "Stasis", 7: "Strand" };
-const SUBCLASS_ELEMENT = {
-  arcstrider: 2, striker: 2, stormcaller: 2,
-  gunslinger: 3, sunbreaker: 3, dawnblade: 3,
-  nightstalker: 4, sentinel: 4, voidwalker: 4,
-  revenant: 6, behemoth: 6, shadebinder: 6,
-  threadrunner: 7, berserker: 7, broodweaver: 7,
-};
-const PLUG_KINDS = ["supers", "class_abilities", "movement", "melee", "grenades", "aspects", "fragments"];
-const PLUG_LABEL = { ability: "Ability", supers: "Super", class_abilities: "Class ability", movement: "Movement", melee: "Melee", grenades: "Grenade", aspects: "Aspects", fragments: "Fragments" };
-const TIER_LEGENDARY = 5, TIER_EXOTIC = 6;
-const ITEMTYPE_ARMOR = 2, ITEMTYPE_WEAPON = 3, ITEMTYPE_SUBCLASS = 16;
-const VAULT = "vault";
-const VAULT_BUCKET = 138197802;
-const CHAR_BUCKET_CAPACITY = 9;
-const DEFAULT_RULES = { unownedExotics: false, noDoublePrimary: true, noDoubleSpecial: true, guaranteedDoubleSpecial: false, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mods: true, mono: false };
-
-/* ---------- utilities ---------- */
-const $ = id => document.getElementById(id);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const norm = s => String(s).toLowerCase().replace(/[‘’`]/g, "'").replace(/\s+/g, " ").trim();
-const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-
-const store = {
-  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable or full */ } },
-  del(k) { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } },
-};
-
-function log(msg) {
-  const el = $("log");
-  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent;
-}
-
-const state = {
-  token: null,
-  membership: null,
-  manifestVersion: "",
-  defs: null,
-  plugDefs: {},
-  characters: {},
-  items: [],
-  socketData: null,
-  subInfo: {},
-  rules: Object.assign({}, DEFAULT_RULES, store.get("d2b_rules") || {}, { guaranteedExoticArmor: true }),
-  synergy: {},
-  sheet: null,
-  focusMap: {},
-  roll: { subclass: null, weapons: null, armor: null, armorClass: null, mods: null },
-};
-
-/* ---------- Bungie API ---------- */
-async function bungie(path, { method = "GET", body } = {}) {
-  const headers = { "X-API-Key": CONFIG.apiKey };
-  if (state.token) headers.Authorization = "Bearer " + state.token.access;
-  if (body) headers["Content-Type"] = "application/json";
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(API + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-    if (res.status === 401) { signOut(false); throw new Error("Session expired. Sign in again."); }
-    let json;
-    try { json = await res.json(); } catch { throw new Error(`HTTP ${res.status} from ${path}`); }
-    if (json.ErrorCode === 1) {
-      if (json.ThrottleSeconds > 0) await sleep(json.ThrottleSeconds * 1000);
-      return json.Response;
-    }
-    if (json.ErrorStatus === "WebAuthRequired" || json.ErrorCode === 99) {
-      signOut(false); throw new Error("Session expired. Sign in again.");
-    }
-    if (json.ThrottleSeconds > 0) { await sleep(json.ThrottleSeconds * 1000); continue; }
-    throw new Error(`${json.ErrorStatus}: ${json.Message}`);
-  }
-  throw new Error("Bungie is throttling requests. Wait a moment and retry.");
-}
-
-/* Socket changes start at least 500 ms apart (DIM's limit); the request's own round trip counts toward the gap. */
-let lastSocketChange = 0;
-async function socketGap() {
-  const wait = lastSocketChange + 500 - Date.now();
-  if (wait > 0) await sleep(wait);
-  lastSocketChange = Date.now();
-}
-
-async function runPool(items, n, fn) {
-  let i = 0;
-  const worker = async () => {
-    while (i < items.length) {
-      const x = items[i++];
-      try { await fn(x); } catch (e) { log(`Lookup failed for ${x}: ${e.message}`); }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
-}
-
-/* ---------- auth ---------- */
-function signIn() {
-  store.set("d2r_return", "build.html");
-  const st = Array.from(crypto.getRandomValues(new Uint32Array(4))).join("-");
-  store.set("d2r_oauth_state", st);
-  location.href = `${BUNGIE}/en/OAuth/Authorize?client_id=${encodeURIComponent(CONFIG.clientId)}&response_type=code&state=${encodeURIComponent(st)}`;
-}
-
-function signOut(reload = true) {
-  store.del("d2r_token");
-  state.token = null;
-  if (reload) location.reload();
-}
-
-async function handleRedirect() {
-  const p = new URLSearchParams(location.search);
-  const code = p.get("code");
-  if (!code) return;
-  const st = p.get("state");
-  history.replaceState(null, "", location.pathname);
-  const expected = store.get("d2r_oauth_state");
-  store.del("d2r_oauth_state");
-  if (!expected || st !== expected) throw new Error("Sign-in state mismatch. Sign in again.");
-  const res = await fetch(API + "/App/OAuth/Token/", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "authorization_code", code, client_id: CONFIG.clientId }),
-  });
-  let j = {};
-  try { j = await res.json(); } catch { /* handled below */ }
-  if (!j.access_token) throw new Error("Token exchange failed: " + (j.error_description || j.error || `HTTP ${res.status}`));
-  state.token = { access: j.access_token, expires: Date.now() + (j.expires_in - 60) * 1000 };
-  store.set("d2r_token", state.token);
-}
-
-/* ---------- definitions ---------- */
-async function loadMembership() {
-  const r = await bungie("/User/GetMembershipsForCurrentUser/");
-  const ms = r.destinyMemberships || [];
-  if (!ms.length) throw new Error("No Destiny account on this Bungie profile.");
-  const m = ms.find(x => x.membershipId === r.primaryMembershipId)
-         || ms.find(x => x.crossSaveOverride === 0 || x.crossSaveOverride === x.membershipType)
-         || ms[0];
-  state.membership = { type: m.membershipType, id: m.membershipId, name: m.bungieGlobalDisplayName || m.displayName };
-  $("account").textContent = state.membership.name;
-}
-
-function slimPlug(d) {
-  return {
-    n: d.displayProperties?.name || "",
-    c: d.plug?.plugCategoryIdentifier || "",
-    ch: d.plug?.plugCategoryHash || 0,
-    t: d.itemTypeDisplayName || "",
-    k: (d.investmentStats || []).find(st => st.statTypeHash === 2223994109)?.value || d.plug?.energyCapacity?.capacityValue || 0,
-    e: d.plug?.energyCost?.energyCost || 0,
-    i: d.displayProperties?.icon || "",
-    b: d.breakerTypeHash || 0,
-    pk: d.perks ? d.perks.map(x => x.perkHash) : undefined,
-  };
-}
-
-function slimDefs(raw) {
-  const out = {}, plugs = {};
-  for (const [hash, d] of Object.entries(raw)) {
-    if (d.plug) plugs[hash] = slimPlug(d);
-    if (!d.inventory) continue;
-    if (d.itemType !== ITEMTYPE_WEAPON && d.itemType !== ITEMTYPE_ARMOR && d.itemType !== ITEMTYPE_SUBCLASS) continue;
-    out[hash] = {
-      name: d.displayProperties?.name || "?",
-      icon: d.displayProperties?.icon || "",
-      itemType: d.itemType,
-      tier: d.inventory.tierType,
-      bucket: d.inventory.bucketTypeHash,
-      ammo: d.equippingBlock?.ammoType || 0,
-      classType: d.classType,
-      typeName: d.itemTypeDisplayName || "",
-      dmg: d.defaultDamageType || 0,
-      coll: d.collectibleHash || 0,
-      breaker: d.breakerTypeHash || 0,
-      set: d.equippingBlock?.equipableItemSetHash || 0,
-    };
-  }
-  return { out, plugs };
-}
-
-async function loadDefs() {
-  const man = await bungie("/Destiny2/Manifest/");
-  state.manifestVersion = man.version;
-  const paths = man.jsonWorldComponentContentPaths.en;
-  state.manifestPaths = paths;
-  log("Downloading item definitions…");
-  let slim = slimDefs(await (await fetch(BUNGIE + paths.DestinyInventoryItemLiteDefinition)).json());
-  const hasAmmo = Object.values(slim.out).some(d => d.itemType === ITEMTYPE_WEAPON && d.ammo);
-  if (!hasAmmo) {
-    log("Lite definitions lack ammo data; downloading full definitions (large)…");
-    slim = slimDefs(await (await fetch(BUNGIE + paths.DestinyInventoryItemDefinition)).json());
-  }
-  state.defs = slim.out;
-  state.plugDefs = slim.plugs;
-  log(`Definitions loaded (${Object.keys(slim.out).length} items).`);
-}
-
-/* Per-item definition lookups (subclass sockets, plug details), cached per manifest version. */
-const entCache = {
-  key: "", data: {},
-  open() {
-    const key = "d2b_ent1_" + state.manifestVersion;
-    if (this.key === key) return;
-    this.key = key;
-    this.data = store.get(key) || {};
-    try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith("d2b_ent") && k !== key) localStorage.removeItem(k); } } catch { /* ignore */ }
-  },
-  save() { store.set(this.key, this.data); },
-};
-
-async function fetchEntities(prefix, hashes, slimFn, type = "DestinyInventoryItemDefinition") {
-  entCache.open();
-  const missing = [...new Set(hashes)].filter(h => h && !((prefix + h) in entCache.data));
-  if (!missing.length) return;
-  log(`Looking up ${missing.length} definitions…`);
-  await runPool(missing, 6, async h => {
-    const d = await bungie(`/Destiny2/Manifest/${type}/${h}/`);
-    entCache.data[prefix + h] = slimFn(d);
-  });
-  entCache.save();
-}
-
-const plugDef = h => entCache.data["p" + h] || state.plugDefs[h] || null;
-const plugName = h => plugDef(h)?.n || String(h);
-function plugKind(h) {
-  const d = plugDef(h);
-  if (!d) return null;
-  const s = `${d.c} ${d.t}`.toLowerCase();
-  if (/fragment/.test(s)) return "fragments";
-  if (/aspect/.test(s)) return "aspects";
-  if (/super/.test(s)) return "supers";
-  if (/grenade/.test(s)) return "grenades";
-  if (/melee/.test(s)) return "melee";
-  if (/class[\s_.-]?abilit/.test(s)) return "class_abilities";
-  if (/movement|jump/.test(s)) return "movement";
-  return null;
-}
-const ELEMENT_TOKENS = { arc: 2, solar: 3, thermal: 3, void: 4, stasis: 6, strand: 7 };
-function plugElement(h) {
-  for (const tok of (plugDef(h)?.c || "").toLowerCase().split(/[._\s-]+/)) if (ELEMENT_TOKENS[tok]) return ELEMENT_TOKENS[tok];
-  return 0;
-}
-const isEmptyPlug = h => !h || /^empty/i.test(plugDef(h)?.n || "") || /^$/.test(plugDef(h)?.n ?? "x");
-
-/* ---------- inventory ---------- */
-async function loadProfile() {
-  const m = state.membership;
-  const r = await bungie(`/Destiny2/${m.type}/Profile/${m.id}/?components=102,200,201,205,300`);
-  state.characters = r.characters?.data || {};
-  const instances = r.itemComponents?.instances?.data || {};
-  const items = [];
-  const add = (it, owner, equipped) => {
-    const d = state.defs[it.itemHash];
-    if (!d || !it.itemInstanceId) return;
-    const slots = d.itemType === ITEMTYPE_WEAPON ? WEAPON_BUCKETS : d.itemType === ITEMTYPE_ARMOR ? ARMOR_BUCKETS : [BUCKET.SUBCLASS];
-    if (!slots.includes(d.bucket)) return;
-    if (owner === VAULT ? it.bucketHash !== VAULT_BUCKET : it.bucketHash !== d.bucket) return; // skips postmaster
-    const inst = instances[it.itemInstanceId] || {};
-    items.push({ id: it.itemInstanceId, hash: it.itemHash, def: d, owner, equipped, power: inst.primaryStat?.value || 0, dmg: inst.damageType || 0, energyCap: inst.energy?.energyCapacity || 0 });
-  };
-  for (const it of r.profileInventory?.data?.items || []) add(it, VAULT, false);
-  for (const [cid, inv] of Object.entries(r.characterInventories?.data || {})) for (const it of inv.items) add(it, cid, false);
-  for (const [cid, inv] of Object.entries(r.characterEquipment?.data || {})) for (const it of inv.items) add(it, cid, true);
-  state.items = items;
-  state.socketData = null;
-  state.champs = null;
-  state.subInfo = {};
-  log(`Inventory loaded: ${items.filter(i => i.def.itemType === ITEMTYPE_WEAPON).length} weapons, ${items.filter(i => i.def.itemType === ITEMTYPE_ARMOR).length} armor.`);
-}
-
-/* ---------- subclass data ---------- */
-async function ensureSocketData() {
-  if (state.socketData) return;
-  log("Loading subclass sockets…");
-  const m = state.membership;
-  // Inventory components included so Bungie returns sockets for vault and character items too (as DIM requests them).
-  const r = await bungie(`/Destiny2/${m.type}/Profile/${m.id}/?components=102,201,205,305,310`);
-  state.socketData = {
-    sockets: r.itemComponents?.sockets?.data || {},
-    reusable: r.itemComponents?.reusablePlugs?.data || {},
-    profilePlugs: r.profilePlugSets?.data?.plugs || {},
-    charPlugs: r.characterPlugSets?.data || {},
-  };
-}
-
-function subclassElementByName(name, hud) {
-  const n = norm(name);
-  if (n.includes("prismatic")) return "prism";
-  for (const [k, v] of Object.entries(SUBCLASS_ELEMENT)) if (n.includes(k)) return v;
-  return hud || 0;
-}
-
-const SOCKET_CAT = {
-  super: [457473665],
-  abilities: [309722977, 3218807805],
-  aspects: [2047681910, 2140934067, 764703411, 3400923910],
-  fragments: [271461480, 1313488945, 193371309, 2819965312],
-};
-
-async function getSubclassInfo(cid) {
-  if (state.subInfo[cid]) return state.subInfo[cid];
-  await ensureSocketData();
-  const subs = state.items.filter(i => i.def.itemType === ITEMTYPE_SUBCLASS && i.owner === cid);
-  if (!subs.length) throw new Error("No subclasses found on this character.");
-  await fetchEntities("s", subs.map(s => s.hash), d => ({
-    e: (d.sockets?.socketEntries || []).map(s => ({
-      i: s.singleInitialItemHash || 0,
-      t: s.socketTypeHash || 0,
-      r: s.reusablePlugSetHash || 0,
-      ri: (s.reusablePlugItems || []).map(p => p.plugItemHash),
-    })),
-    cats: (d.sockets?.socketCategories || []).map(c => ({ h: c.socketCategoryHash, idx: c.socketIndexes || [] })),
-    h: d.talentGrid?.hudDamageType || 0,
-  }));
-  const defsList = subs.map(s => entCache.data["s" + s.hash]).filter(Boolean);
-  await fetchEntities("ps", defsList.flatMap(d => d.e.map(e => e.r)), d => (d.reusablePlugItems || []).map(p => p.plugItemHash), "DestinyPlugSetDefinition");
-  await fetchEntities("st", defsList.flatMap(d => d.e.map(e => e.t)), d => (d.plugWhitelist || []).map(w => w.categoryHash), "DestinySocketTypeDefinition");
-
-  const sd = state.socketData;
-  // Like DIM: use each socket's full definition list. Bungie's per-character unlock flags are unreliable
-  // (Bungie-net/api#1572), so locked picks are possible and get reported after equipping.
-  const pre = subs.map(s => {
-    const def = entCache.data["s" + s.hash];
-    if (!def) return null;
-    const reus = sd.reusable[s.id]?.plugs || {};
-    const defined = def.e.map((e, idx) => [...new Set([...(entCache.data["ps" + e.r] || []), ...e.ri, ...(reus[idx] || []).map(p => p.plugItemHash)])]);
-    return { s, def, defined };
-  }).filter(Boolean);
-  await fetchEntities("p", pre.flatMap(x => [...x.defined.flat(), ...x.def.e.map(e => e.i)]), slimPlug);
-
-  const raw = pre.map(({ s, def, defined }) => {
-    const cur = (sd.sockets[s.id]?.sockets || []).map(x => x.plugHash || 0);
-    const subEl = subclassElementByName(s.def.name, def.h);
-    const avail = {};
-    def.e.forEach((e, idx) => {
-      const real = h => h && !/^empty/i.test(plugDef(h)?.n || "");
-      let list = defined[idx];
-      // Keep only plugs the socket type accepts (the game's whitelist).
-      const wl = entCache.data["st" + e.t] || [];
-      if (wl.length) {
-        const ok = list.filter(h => { const ch = plugDef(h)?.ch; return !ch || wl.includes(ch); });
-        if (ok.some(real)) list = ok;
-      }
-      // Backup: on elemental subclasses, drop plugs labelled with a different element.
-      if (typeof subEl === "number" && subEl) {
-        const ok = list.filter(h => { const pe = plugElement(h); return !pe || pe === subEl; });
-        if (ok.some(real)) list = ok;
-      }
-      list = list.slice();
-      if (cur[idx] && !list.includes(cur[idx])) list.push(cur[idx]);
-      avail[idx] = list;
-    });
-    return { s, def, cur, avail };
-  });
-
-  const allPlugs = raw.flatMap(x => Object.values(x.avail).flat());
-  await fetchEntities("p", allPlugs, slimPlug);
-
-  const infos = raw.map(x => {
-    const groups = { supers: [], abilities: [], aspects: [], fragments: [] };
-    for (const c of x.def.cats) {
-      if (SOCKET_CAT.super.includes(c.h)) groups.supers.push(...c.idx);
-      else if (SOCKET_CAT.abilities.includes(c.h)) groups.abilities.push(...c.idx);
-      else if (SOCKET_CAT.aspects.includes(c.h)) groups.aspects.push(...c.idx);
-      else if (SOCKET_CAT.fragments.includes(c.h)) groups.fragments.push(...c.idx);
-    }
-    const empty = idx => x.def.e[idx]?.i || 0;
-    const choices = idx => x.avail[idx].filter(h => h && !((groups.aspects.includes(idx) || groups.fragments.includes(idx)) && h === empty(idx)) && !/^empty/i.test(plugDef(h)?.n || ""));
-    return { ...x, groups, choices, element: subclassElementByName(x.s.def.name, x.def.h) };
-  });
-
-  if (!state.subLogged?.[cid]) {
-    state.subLogged = state.subLogged || {};
-    state.subLogged[cid] = true;
-    log(`Subclasses on ${CLASS_NAME[state.characters[cid]?.classType] || "character"}: ` + infos.map(i =>
-      `${i.s.def.name} [` + ["supers", "abilities", "aspects", "fragments"].map(g => {
-        const opts = new Set(i.groups[g].flatMap(idx => i.choices(idx))).size;
-        return `${g}: ${i.groups[g].length} slot${i.groups[g].length === 1 ? "" : "s"}/${opts} options`;
-      }).join(", ") + "]"
-    ).join(" | "));
-  }
-  state.subInfo[cid] = infos;
-  return infos;
-}
-
-const SUPER_ELEMENT = [
-  ["golden gun", 3], ["blade barrage", 3], ["hammer of sol", 3], ["burning maul", 3], ["daybreak", 3], ["well of radiance", 3], ["song of flame", 3],
-  ["gathering storm", 2], ["arc staff", 2], ["storm's edge", 2], ["fists of havoc", 2], ["thundercrash", 2], ["stormtrance", 2], ["chaos reach", 2],
-  ["shadowshot", 4], ["spectral blades", 4], ["sentinel shield", 4], ["ward of dawn", 4], ["twilight arsenal", 4], ["nova bomb", 4], ["nova warp", 4],
-  ["silence and squall", 6], ["glacial quake", 6], ["winter's wrath", 6],
-  ["silkstrike", 7], ["bladefury", 7], ["needlestorm", 7],
-];
-function superElementByName(superHash) {
-  const n = norm(plugName(superHash)).replace(/&/g, "and");
-  return SUPER_ELEMENT.find(([k]) => n.includes(k))?.[1] || 0;
-}
-
-function superElement(infos, superHash) {
-  const target = norm(plugName(superHash));
-  for (const info of infos) {
-    if (info.element === "prism" || !info.element) continue;
-    for (const idx of info.groups.supers || []) {
-      if (info.avail[idx].some(h => norm(plugName(h)) === target)) return info.element;
-    }
-  }
-  return 0;
-}
-
-function resolveElement(infos, info, superHash) {
-  if (info.element !== "prism") return info.element || 0;
-  const el = superElementByName(superHash) || superElement(infos, superHash) || plugElement(superHash);
-  if (!el) log(`Couldn't determine the element of "${plugName(superHash)}" (category ${plugDef(superHash)?.c || "?"}); Monochromatic not applied.`);
-  return el;
-}
-
-async function equippedElement(cid) {
-  const infos = await getSubclassInfo(cid);
-  const info = infos.find(x => x.s.equipped);
-  if (!info) return 0;
-  const sIdx = info.groups.supers?.[0];
-  return resolveElement(infos, info, sIdx != null ? info.cur[sIdx] : 0);
-}
-
-/* ---------- rolling ---------- */
-function pickByName(cands) {
-  const names = [...new Set(cands.map(i => i.def.name))];
-  if (!names.length) return null;
-  const name = pick(names);
-  return pick(cands.filter(i => i.def.name === name));
-}
-
-const exoticOff = list => new Set(store.get("d2r_off_" + list) || []);
-const isExo = i => i.def.tier === TIER_EXOTIC;
-
-function elementOK(bucket, dmg, E) {
-  if (!E) return true;
-  const energyEl = E === 2 || E === 3 || E === 4;
-  if (bucket === BUCKET.POWER) return dmg === E;
-  if (bucket === BUCKET.ENERGY) return energyEl ? dmg === E : true;
-  if (bucket === BUCKET.KINETIC) return energyEl ? true : dmg === E;
-  return true;
-}
-
-/* Exotic weapons not in the inventory, as placeholder items to be pulled from Collections. */
-function unownedExoticWeapons(off) {
-  const owned = new Set(state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && isExo(i)).map(i => i.def.name));
-  const byName = {};
-  for (const [h, d] of Object.entries(state.defs)) {
-    if (d.itemType !== ITEMTYPE_WEAPON || d.tier !== TIER_EXOTIC || !d.ammo || !WEAPON_BUCKETS.includes(d.bucket)) continue;
-    if (!d.name || d.name === "?" || /classified/i.test(d.name) || owned.has(d.name) || off.has(d.name)) continue;
-    const prev = byName[d.name];
-    if (!prev || (!prev.def.coll && d.coll)) {
-      byName[d.name] = { id: null, hash: Number(h), def: d, owner: "collections", equipped: false, power: 0, dmg: d.dmg, virtual: true };
-    }
-  }
-  return Object.values(byName);
-}
-
-/* ---------- champions ----------
-   A weapon stuns a champion type if (as DIM decides it) its definition has a breaker type, a plugged perk or mod has one,
-   a plugged plug carries a breaker perk ("[Shield-Piercing]" / "[Disruption]" / "[Stagger]" in Bungie's perk names, plus DIM's
-   hand-kept list), or it is in DIM's extended-breaker list. Subclass verbs and artifact perks don't count. */
-const BREAKER = { barrier: 485622768, overload: 2611060930, unstoppable: 3178805705 };
-const CHAMP_RULES = { champBarrier: "barrier", champOverload: "overload", champUnstoppable: "unstoppable" };
-const CHAMP_LABEL = { barrier: "Barrier", overload: "Overload", unstoppable: "Unstoppable" };
-const BREAKER_PERK_LABELS = [[/\[shield-piercing\]/i, "barrier"], [/\[disruption\]/i, "overload"], [/\[stagger\]/i, "unstoppable"]];
-const DIM_BREAKER_PERKS = {2917776374:"unstoppable",164592134:"unstoppable",1134361550:"unstoppable",2084279142:"unstoppable",2612240126:"unstoppable",472686235:"overload",15807694:"overload",656925452:"overload",1478638730:"overload",2026681315:"overload",3033353825:"overload",4114351468:"overload",3469621377:"barrier",4000621756:"barrier",549294277:"barrier",1235808583:"barrier",1435986861:"barrier",1839099519:"barrier",3437929382:"barrier",3656570035:"barrier"};
-const DIM_EXTENDED_BREAKER = {17096506:3178805705,89619507:3178805705,449318888:485622768,503025963:485622768,511888814:2611060930,593808239:485622768,1003391927:485622768,1047932517:2611060930,1203306857:3178805705,1307844890:485622768,1351987111:3178805705,1443166262:485622768,1685137410:3178805705,1734844650:3178805705,1955548646:485622768,2110100341:3178805705,2415768376:3178805705,2474293653:485622768,2687811401:2611060930,2694576561:2611060930,3118061004:3178805705,3487253372:485622768,3598649636:485622768,3661051060:485622768,4029987901:2611060930,4095189811:485622768,4268030601:485622768};
-const champOfBreaker = h => Object.keys(BREAKER).find(k => BREAKER[k] === h) || null;
-const requiredChamps = rules => Object.entries(CHAMP_RULES).filter(([r]) => rules[r]).map(([, c]) => c);
-const champList = cs => cs.map(c => CHAMP_LABEL[c]).join(" + ");
-
-function defChamps(hash, def) {
-  const out = new Set();
-  const a = champOfBreaker(def?.breaker), b = champOfBreaker(DIM_EXTENDED_BREAKER[hash]);
-  if (a) out.add(a);
-  if (b) out.add(b);
-  return out;
-}
-const champsOf = i => (i.id && state.champs?.[i.id]) || defChamps(i.hash, i.def);
-
-/* Breaker perks by hash, from Bungie's perk names (one download per game update, then cached). */
-async function breakerPerkMap() {
-  entCache.open();
-  if (entCache.data.breakerPerks) return entCache.data.breakerPerks;
-  const out = { ...DIM_BREAKER_PERKS };
-  try {
-    log("Reading champion perk names…");
-    const all = await (await fetch(BUNGIE + state.manifestPaths.DestinySandboxPerkDefinition)).json();
-    for (const [h, d] of Object.entries(all)) {
-      const hit = BREAKER_PERK_LABELS.find(([re]) => re.test(d.displayProperties?.name || ""));
-      if (hit) out[h] = hit[1];
-    }
-  } catch (e) { log("Couldn't read perk names (" + e.message + "); using DIM's list only."); }
-  entCache.data.breakerPerks = out;
-  entCache.save();
-  return out;
-}
-
-async function ensureChampData() {
-  if (state.champs) return;
-  try {
-    const weapons = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON);
-    await ensureSocketData();
-    const sd = state.socketData;
-    const perks = await breakerPerkMap();
-    const plugged = i => (sd.sockets[i.id]?.sockets || []).map(x => x.plugHash).filter(Boolean);
-    const plugInfo = h => (state.plugDefs[h]?.pk ? state.plugDefs[h] : entCache.data["pp" + h]) || null;
-    const missing = [...new Set(weapons.flatMap(plugged))].filter(h => !plugInfo(h));
-    if (missing.length) await fetchEntities("pp", missing, d => ({ b: d.breakerTypeHash || 0, pk: (d.perks || []).map(p => p.perkHash) }));
-    const champs = {};
-    for (const i of weapons) {
-      const set = defChamps(i.hash, i.def);
-      for (const h of plugged(i)) {
-        const p = plugInfo(h);
-        if (!p) continue;
-        const c = champOfBreaker(p.b);
-        if (c) set.add(c);
-        for (const ph of p.pk || []) if (perks[ph]) set.add(perks[ph]);
-      }
-      champs[i.id] = set;
-    }
-    state.champs = champs;
-    await fetchEntities("bt", Object.values(BREAKER), d => d.displayProperties?.icon || "", "DestinyBreakerTypeDefinition");
-  } catch (e) {
-    log("Couldn't read champion data: " + e.message);
-    state.champs = {};
-  }
-}
-
-/* Pre-check before rolling: each required champion type needs at least one eligible weapon. */
-/* Take a weapon for each required champion type not yet covered. False if a type can't be covered with the open slots. */
-function takeChamps(champs, pool, picks, take, ammoOK, exoTaken, choose) {
-  for (const c of shuffle(champs)) {
-    if (Object.values(picks).some(i => champsOf(i).has(c))) continue;
-    const m = pool.filter(i => !picks[i.def.bucket] && champsOf(i).has(c) && ammoOK(i) && (!exoTaken() || !isExo(i)));
-    if (!m.length) return false;
-    take(choose(m));
-  }
-  return true;
-}
-
-function checkChampPool(rules, pool) {
-  const champs = requiredChamps(rules);
-  const none = champs.filter(c => !pool.some(i => champsOf(i).has(c)));
-  if (none.length) throw new Error(`No eligible weapon stuns ${champList(none)} champions.`);
-  return champs;
-}
-
-function champBadges(i) {
-  const cs = [...champsOf(i)];
-  return cs.map((c, k) => {
-    const img = document.createElement("img");
-    const icon = entCache.data["bt" + BREAKER[c]];
-    img.className = "champ";
-    img.style.right = (-3 + k * 14) + "px";
-    img.alt = CHAMP_LABEL[c];
-    img.title = "Stuns " + CHAMP_LABEL[c];
-    if (icon) img.src = BUNGIE + icon;
-    return img;
-  });
-}
-
-function weaponPool(rules, E) {
-  const off = exoticOff("w");
-  const pool = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && i.def.ammo
-    && (i.def.tier === TIER_LEGENDARY || (isExo(i) && !off.has(i.def.name)))
-    && elementOK(i.def.bucket, i.dmg, E));
-  if (rules.unownedExotics) pool.push(...unownedExoticWeapons(off).filter(v => elementOK(v.def.bucket, v.dmg, E)));
-  // Guaranteed double special: kinetic and energy slots both take special-ammo weapons.
-  return rules.guaranteedDoubleSpecial ? pool.filter(i => i.def.bucket === BUCKET.POWER || i.def.ammo === 2) : pool;
-}
 
 /* ---------- weapon synergy ----------
    Needs: weapon types / weapons from the exotic armor's sheet row, plus super-based ones.
@@ -778,6 +198,7 @@ const exwTags = name => {
   if (!EXW_TAGS) EXW_TAGS = Object.fromEntries(Object.entries(BUILD_WEIGHTS.exw || {}).map(([k, v]) => [norm(k), v]));
   return EXW_TAGS[norm(name)] || [];
 };
+
 
 /* The exotic armor's weapons. Forced unless its sheet row has Force weapon = N; then they are only weighted (soft = true). */
 function weaponNeed(soft = false) {
@@ -816,8 +237,21 @@ const isPrismaticRoll = sub => /prismatic/i.test(sub.info?.s?.def?.name || "");
 function meetsNeed(i, need) {
   if (!need) return true;
   if (need.el && i.dmg === need.el) return true;
-  const t = norm(i.def.typeName || ""), n = norm(i.def.name);
-  return need.names.includes(n) || need.types.some(x => t === x || t.endsWith(" " + x) || x.endsWith(" " + t) || t === x.replace(/s$/, ""));
+  const t = weaponTypeKey(i.def.typeName || ""), n = norm(i.def.name);
+  return need.names.includes(n) || need.types.some(x => weaponTypeKey(x) === t);
+}
+
+/* Weapon types compare exactly (so Fusion Rifle never matches Linear Fusion Rifle), after plurals and
+   short names in the sheet are mapped to the in-game type name. */
+const WEAPON_TYPE_ALIAS = {
+  "bow": "combat bow", "fusion": "fusion rifle", "linear fusion": "linear fusion rifle", "lfr": "linear fusion rifle",
+  "gl": "grenade launcher", "smg": "submachine gun", "hc": "hand cannon", "rocket": "rocket launcher",
+  "sniper": "sniper rifle", "scout": "scout rifle", "pulse": "pulse rifle", "auto": "auto rifle", "trace": "trace rifle",
+  "lmg": "machine gun",
+};
+function weaponTypeKey(x) {
+  const n = norm(x), one = n.replace(/s$/, "");
+  return WEAPON_TYPE_ALIAS[n] || WEAPON_TYPE_ALIAS[one] || one;
 }
 
 function superWeaponTypes() {
@@ -934,6 +368,10 @@ function rollWeapons(rules, E) {
     }
     if (ok) return WEAPON_BUCKETS.map(b => picks[b]);
   }
+  // Random attempts can miss a narrow valid combination; search all of them (in weighted order) before giving up.
+  const nameW = n => Math.max(...pool.filter(i => i.def.name === n).map(i => weaponWeight(i, tags)));
+  const found = searchWeapons(rules, pool, champs, need && { test: i => meetsNeed(i, need) }, names => weightedSample(names, names.length, nameW));
+  if (found) return found;
   throw new Error("Couldn't build a weapon loadout that meets the rules" + (need ? ` with ${need.label}` : "") + (champs.length ? ` stunning ${champList(champs)}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
 }
 
@@ -947,22 +385,32 @@ const RAID_NAMES = ["raid", "leviathan", "eater of worlds", "spire of stars", "l
 async function oldRaidArmor(items) {
   try {
     if (!state.sources) {
-      log("Downloading Collections sources…");
-      const raw = await (await fetch(BUNGIE + state.manifestPaths.DestinyCollectibleDefinition)).json();
-      const byColl = {}, byItem = {}, byName = {};
-      for (const [h, d] of Object.entries(raw)) {
-        const src = d.sourceString || "";
-        byColl[h] = src;
-        if (d.itemHash) byItem[d.itemHash] = src;
-        const n = norm(d.displayProperties?.name || "");
-        if (n && src && !byName[n]) byName[n] = src;
+      // Cached per manifest version: 1 = a raid source, 0 = another source (empty sources are left out, as before).
+      const key = "src_" + SLIM_VERSION + "_" + state.manifestVersion;
+      state.sources = await idb.get(key);
+      if (!state.sources) {
+        log("Downloading Collections sources…");
+        const raw = await (await fetch(BUNGIE + state.manifestPaths.DestinyCollectibleDefinition)).json();
+        const byColl = {}, byItem = {}, byName = {};
+        const raid = src => RAID_NAMES.some(r => norm(src).includes(r)) ? 1 : 0;
+        for (const [h, d] of Object.entries(raw)) {
+          const src = d.sourceString || "";
+          if (!src) continue;
+          byColl[h] = raid(src);
+          if (d.itemHash) byItem[d.itemHash] = raid(src);
+          const n = norm(d.displayProperties?.name || "");
+          if (n && !(n in byName)) byName[n] = raid(src);
+        }
+        state.sources = { byColl, byItem, byName };
+        await idb.prune("src_", key);
+        await idb.set(key, state.sources);
       }
-      state.sources = { byColl, byItem, byName };
     }
     const arch = await armorArchetypes(items, true);
-    const src = i => state.sources.byColl[i.def.coll] || state.sources.byItem[i.hash] || state.sources.byName[norm(i.def.name)] || "";
+    const S = state.sources;
+    const isRaid = i => (S.byColl[i.def.coll] ?? S.byItem[i.hash] ?? S.byName[norm(i.def.name)] ?? 0) === 1;
     // Only pieces whose sockets were read can be judged (no socket data isn't "no archetype").
-    const out = new Set(items.filter(i => state.socketData.sockets[i.id] && !arch[i.id] && RAID_NAMES.some(r => norm(src(i)).includes(r))).map(i => i.id));
+    const out = new Set(items.filter(i => state.socketData.sockets[i.id] && !arch[i.id] && isRaid(i)).map(i => i.id));
     if (out.size) log(`Avoiding ${out.size} old raid armor pieces.`);
     return out;
   } catch (e) {
@@ -1029,10 +477,10 @@ async function focusArchetypes(exo, pool, verbose) {
 /* ---------- armor set bonuses ----------
    Rankings and tags from the Endgame Analysis "Set Bonuses" tab (tier) and the Compendium "Armor Perks" tab (triggers).
    w = tier weight (S 2.0 … F 0.5, PvP-only 0.3), t = mechanic tags, wt = weapon types the bonus needs. */
-const SET_BONUSES = {"Atheon's Memory":{"4":{"n":"Collective Power","w":2.0,"t":["amplified","bolt","devour","frostarmor","heal","invis","orb","overshield","radiant","super","wovenmail"],"wt":[]},"2":{"n":"Radiolaria Breach","w":0.8,"t":["heal","orb"],"wt":[]}},"Exodus Down":{"4":{"n":"Repurposed Charge","w":2.0,"t":["heal","resist"],"wt":[]},"2":{"n":"Emergency Electromagnet","w":1.0,"t":["heal","orb"],"wt":[]}},"Promised":{"2":{"n":"Stable Resonance","w":2.0,"t":["resist"],"wt":[]},"4":{"n":"Resonance Redirection","w":1.3,"t":["weapon"],"wt":[]}},"TM Custom":{"4":{"n":"High Noon","w":2.0,"t":["weapon"],"wt":[]},"2":{"n":"Old Martian Diplomacy","w":1.3,"t":["heal"],"wt":[]}},"CODA":{"4":{"n":"So Very Thin","w":2.0,"t":["grenade","melee","resist","weapon"],"wt":[]},"2":{"n":"Between Poles","w":0.8,"t":["grenade","melee","weapon"],"wt":[]}},"Smoke Jumper":{"2":{"n":"Ride Together, Die Together","w":1.6,"t":["orb","resist"],"wt":[]},"4":{"n":"Too Old for This","w":1.0,"t":["heal","melee"],"wt":[]}},"Legacy's Oath":{"2":{"n":"Augmented Servos","w":1.6,"t":["melee"],"wt":[]},"4":{"n":"God-like Judgment","w":1.0,"t":["heal","super"],"wt":[]}},"Crystocrene":{"2":{"n":"Resupply","w":1.6,"t":["orb"],"wt":[]},"4":{"n":"From the Storm","w":0.8,"t":["frostarmor"],"wt":[]}},"Nezarec's Nightmare":{"4":{"n":"Dream-Devourer","w":1.6,"t":["devour","melee","resist"],"wt":[]},"2":{"n":"Bad Dreams","w":1.0,"t":["orb"],"wt":[]}},"Pantheos Resplendent":{"2":{"n":"Well Prepared","w":1.6,"t":["heal"],"wt":[]},"4":{"n":"Down the Line","w":0.8,"t":[],"wt":[]}},"Oryx's Memory":{"4":{"n":"Ascendant Escape","w":1.6,"t":["heal","invis"],"wt":[]},"2":{"n":"Iron Sharpens Iron","w":1.6,"t":[],"wt":[]}},"Deep Explorer":{"4":{"n":"Bittersweet","w":1.6,"t":["heal"],"wt":[]},"2":{"n":"Built Bitter","w":0.65,"t":["heal","weapon"],"wt":[]}},"AION Adapter":{"2":{"n":"Force Absorption","w":1.6,"t":["resist"],"wt":["Grenade Launcher","Rocket Launcher"]},"4":{"n":"Reactive Shock","w":1.0,"t":["melee"],"wt":[]}},"Great Hunt":{"4":{"n":"Taken Armaments","w":1.6,"t":["grenade"],"wt":[]},"2":{"n":"Taken Barrier","w":1.3,"t":["grenade","resist"],"wt":[]}},"Techeun's Regalia":{"4":{"n":"Truth to Power","w":1.6,"t":["class","grenade","heal","melee","resist"],"wt":[]},"2":{"n":"Queensfoil Rush","w":1.0,"t":["heal","melee","overshield","slow"],"wt":[]}},"Sage Protector":{"2":{"n":"Combat Meditation","w":1.6,"t":["class","grenade"],"wt":["Sword"]},"4":{"n":"Blade Focus","w":1.0,"t":[],"wt":["Sword"]}},"Crota's Memory":{"4":{"n":"Power of the Son","w":1.6,"t":["resist"],"wt":[]},"2":{"n":"Cursed Fist","w":1.0,"t":["melee"],"wt":[]}},"Iron Panoply":{"4":{"n":"Iron Conviction","w":1.3,"t":["heal","resist"],"wt":[]},"2":{"n":"Vigilant Watch","w":1.3,"t":["heal","weapon"],"wt":[]}},"Iron Battalion":{"4":{"n":"Supercyclical","w":1.3,"t":["super"],"wt":[]},"2":{"n":"Primary Honing","w":1.0,"t":["weapon"],"wt":[]}},"Reverie Dawn":{"2":{"n":"A Wish for Protection","w":1.3,"t":["amplified","heal","weapon"],"wt":[]},"4":{"n":"A Wish Fulfilled","w":1.0,"t":["heal"],"wt":[]}},"Swordmaster":{"4":{"n":"Stesso Tempo","w":1.3,"t":["resist"],"wt":["Glaive","Sword"]},"2":{"n":"Balestra","w":1.3,"t":["melee"],"wt":["Glaive","Sword"]}},"Yearning Echo":{"4":{"n":"Overflowing Coffers","w":1.3,"t":["heal","orb","tangle"],"wt":[]},"2":{"n":"Untold Greed","w":1.0,"t":["heal","orb","resist","tangle","weapon"],"wt":[]}},"Ferropotent":{"2":{"n":"Rapid Repair","w":1.3,"t":["heal","orb","resist"],"wt":[]},"4":{"n":"Built From Scratch","w":1.0,"t":["weapon"],"wt":[]}},"Techsec":{"4":{"n":"Concussive Rounds","w":1.3,"t":[],"wt":[]},"2":{"n":"Wrecker","w":1.0,"t":[],"wt":[]}},"Twofold Crown":{"2":{"n":"Crook and Flail","w":1.3,"t":["heal"],"wt":[]},"4":{"n":"Gift of Sight","w":0.3,"t":["weapon"],"wt":[]}},"Last Discipline":{"4":{"n":"Power Loader","w":1.3,"t":["orb"],"wt":[]},"2":{"n":"Terminal Velocity","w":0.65,"t":["weapon"],"wt":[]}},"Thunderhead":{"2":{"n":"License to Thrill","w":1.3,"t":["grenade","melee","resist"],"wt":[]},"4":{"n":"Lethal Weave","w":1.0,"t":["grenade","unravel"],"wt":[]}},"Disaster Corps":{"2":{"n":"Pleas Heard","w":1.3,"t":["heal","weapon"],"wt":["Auto Rifle","Scout Rifle","Sidearm"]},"4":{"n":"Magnificent Duty","w":0.65,"t":["heal","weapon"],"wt":["Auto Rifle","Scout Rifle","Sidearm"]}},"Bushido":{"2":{"n":"Iaido","w":1.3,"t":["heal","weapon"],"wt":[]},"4":{"n":"Unfaltering Focus","w":1.0,"t":["resist"],"wt":["Combat Bow","Shotgun","Sword"]}},"Collective Psyche":{"4":{"n":"Doppler Effect","w":1.0,"t":["heal","radiant","sever","suspend","unravel"],"wt":[]},"2":{"n":"Accretion","w":0.65,"t":[],"wt":[]}},"AION Renewal":{"4":{"n":"Reactive Booster","w":1.0,"t":["freeze","slow","suspend"],"wt":[]},"2":{"n":"Force Converter","w":1.0,"t":[],"wt":["Grenade Launcher","Rocket Launcher"]}},"Seventh Seraph":{"4":{"n":"Rasputin's Reprisal","w":1.0,"t":["heal","tangle"],"wt":[]},"2":{"n":"Rasputin's Wrath","w":0.8,"t":["grenade"],"wt":[]}},"Dark Age":{"4":{"n":"Healing Initiative","w":1.0,"t":["class","heal"],"wt":[]},"2":{"n":"Taking Initiative","w":0.65,"t":["melee","weapon"],"wt":["Glaive","Sword"]}},"Apostate's Blade":{"2":{"n":"Regenerative Threshold","w":1.0,"t":["heal","melee"],"wt":[]},"4":{"n":"Melee Conduction","w":1.0,"t":["heal","melee","radiant","scorch"],"wt":[]}},"Dreambane":{"4":{"n":"Nightmarish Resilience","w":1.0,"t":["heal","weapon"],"wt":[]},"2":{"n":"Nightmarish Power","w":0.65,"t":["grenade","melee"],"wt":[]}},"Flain":{"4":{"n":"Knit Together","w":1.0,"t":["heal","threadling"],"wt":[]},"2":{"n":"Sinew Stitching","w":1.0,"t":["heal","threadling"],"wt":[]}},"Lustrous":{"4":{"n":"Cauterize","w":1.0,"t":["heal"],"wt":[]},"2":{"n":"Photogalvanic","w":0.65,"t":["heal","weapon"],"wt":[]}},"Luminopotent":{"4":{"n":"Shock and Clear","w":1.0,"t":["ionic","jolt"],"wt":[]},"2":{"n":"Ionic Overclock","w":0.65,"t":["amplified","weapon"],"wt":["Fusion Rifle","Linear Fusion Rifle"]}},"Veritas":{"2":{"n":"Lucent Transmutation","w":1.0,"t":["breach","firesprite","melee"],"wt":[]},"4":{"n":"Lucent Tithes","w":1.0,"t":["heal","melee","overshield"],"wt":[]}},"Taken King":{"4":{"n":"Lucent Swarm","w":1.0,"t":["orb"],"wt":[]},"2":{"n":"The Ceremony","w":0.65,"t":["melee","super"],"wt":[]}},"Cyberserpent Null":{"4":{"n":"Bountiful Munitions","w":1.0,"t":[],"wt":[]},"2":{"n":"Adrenal Rush","w":0.65,"t":["weapon"],"wt":[]}},"Resonant Fury":{"4":{"n":"Siphoning Touch","w":1.0,"t":["heal","melee","weapon"],"wt":["Glaive"]},"2":{"n":"Resonant Plating","w":0.8,"t":["heal","melee"],"wt":[]}},"Eutechnology":{"2":{"n":"Gift of the Ley Lines","w":1.0,"t":["breach"],"wt":[]},"4":{"n":"Techeun's Foresight","w":0.8,"t":["breach"],"wt":[]}},"Triumphal Anthem":{"2":{"n":"Scoot to Loot","w":1.0,"t":["weapon"],"wt":[]},"4":{"n":"Shoot to Scoot","w":0.8,"t":["resist","weapon"],"wt":[]}},"Uncaged Deviants":{"4":{"n":"Superluminal Motion","w":1.0,"t":["heal","super"],"wt":[]},"2":{"n":"Special Relativity","w":0.65,"t":[],"wt":[]}},"Spacewalk":{"4":{"n":"Augmented Explosives","w":0.8,"t":["grenade"],"wt":[]},"2":{"n":"Augmented Armaments","w":0.8,"t":["weapon"],"wt":[]}},"Circuit":{"2":{"n":"Revving Up","w":0.8,"t":["heal"],"wt":[]},"4":{"n":"Dielectric Drift","w":0.8,"t":["jolt"],"wt":[]}},"Wildwood":{"2":{"n":"Watchtower","w":0.8,"t":["resist","weapon"],"wt":[]},"4":{"n":"Field Expertise","w":0.8,"t":["weapon"],"wt":[]}},"Kentarch 3":{"4":{"n":"Network Upload","w":0.8,"t":["melee","weapon"],"wt":[]},"2":{"n":"Network Admin","w":0.65,"t":["heal","weapon"],"wt":[]}},"First Ascent":{"2":{"n":"Stack 'Em Up","w":0.8,"t":["transcend"],"wt":[]},"4":{"n":"Burn 'Em Down","w":0.65,"t":["grenade","transcend"],"wt":[]}},"Thriving Survivor":{"4":{"n":"Room Clearing","w":0.8,"t":["grenade","weapon"],"wt":[]},"2":{"n":"Opening Act","w":0.65,"t":["grenade","weapon"],"wt":[]}},"Wild Anthem":{"2":{"n":"Fanfare","w":0.65,"t":["weapon"],"wt":[]},"4":{"n":"SUROS Harmony","w":0.3,"t":["weapon"],"wt":[]}},"Shrewd Survivor":{"4":{"n":"Hotshot","w":0.3,"t":["weapon"],"wt":[]},"2":{"n":"Reflex Action","w":0.3,"t":["weapon"],"wt":["Hand Cannon","Submachine Gun"]}},"Per Audacia":{"2":{"n":"Primary Chain","w":0.3,"t":["weapon"],"wt":[]},"4":{"n":"Sublime Transit","w":0.3,"t":[],"wt":[]}},"Cruel Electrum":{"2":{"n":"Primary Survivor","w":0.3,"t":["weapon"],"wt":[]},"4":{"n":"Primary Phantom","w":0.3,"t":["weapon"],"wt":[]}},"New Demotic":{"4":{"n":"Martingale","w":0.3,"t":["weapon"],"wt":[]},"2":{"n":"Paroli","w":0.3,"t":[],"wt":[]}}};
+const SET_BONUSES = {}; // filled from data/set_bonuses.csv (loadTagData)
 // How often a roll aims for each outcome: nothing, one 2-piece, two 2-pieces, one 4-piece.
 const SET_ODDS = [[0, 0.45], [1, 0.40], [2, 0.10], [4, 0.05]];
-const SET_BY_NORM = Object.fromEntries(Object.entries(SET_BONUSES).map(([k, v]) => [norm(k), v]));
+const SET_BY_NORM = {};
 
 /* Set name for each legendary armor piece (id -> name, "" if none). */
 async function armorSetNames(items) {
@@ -1047,7 +495,7 @@ function setBonusWeight(setName, pcs, ctx) {
   const b = SET_BY_NORM[norm(setName)]?.[pcs];
   if (!b) return 1;
   let score = Math.min(b.t.reduce((sum, t) => sum + (ctx.tags.has(t) ? (BUILD_WEIGHTS.tagw[t] || 1) : 0), 0), 6);
-  if (b.wt.some(t => ctx.wtypes.has(norm(t)))) score += 3;
+  if (b.wt.some(t => ctx.wtypes.has(weaponTypeKey(t)))) score += 3;
   return b.w * Math.min(1 + score, 10);
 }
 
@@ -1064,7 +512,7 @@ async function planSetBonus(exo, free, legendaries) {
   const sub = buildTags();
   const ctx = {
     tags: new Set([...buildContext(exo?.def.name).tags, ...(sub || [])]),
-    wtypes: new Set((state.roll.weapons || []).map(w => norm(w.def.typeName || ""))),
+    wtypes: new Set((state.roll.weapons || []).map(w => weaponTypeKey(w.def.typeName || ""))),
   };
   const covered = (n, avail) => avail.filter(b => bySet[n][b]);
   const choose = (need, avail, exclude, wf) => {
@@ -1135,9 +583,75 @@ async function rollSubclass(cid, exoticName, chosenInfo) {
    Tags derived from the Destiny Data Compendium (exotic armor and ability text) and
    Destiny 2: Endgame Analysis (fragment/aspect tags and tiers). Plugs sharing mechanics
    with the exotic armor (and, for fragments, with the rolled aspects) are more likely. */
-const BUILD_WEIGHTS = {"tagw":{"melee":1,"grenade":1,"super":1,"class":1,"weapon":1,"heal":1,"resist":1,"orb":1,"airborne":1,"scorch":2,"ignition":2,"radiant":2,"sunspot":2,"firesprite":2,"jolt":2,"blind":2,"amplified":2,"ionic":2,"bolt":2,"volatile":2,"weaken":2,"suppress":2,"devour":2,"invis":2,"overshield":2,"breach":2,"slow":2,"freeze":2,"shatter":2,"frostarmor":2,"crystal":2,"shard":2,"sever":2,"unravel":2,"suspend":2,"tangle":2,"threadling":2,"wovenmail":2,"transcend":2},"plugs":{"Name":{"k":"aspect","t":[],"w":1.0},"Facet of Purpose":{"k":"fragment","t":["bolt","frostarmor","heal","orb","overshield","resist","super","wovenmail"],"w":2.0},"Echo of Starvation":{"k":"fragment","t":["breach","devour","orb"],"w":2.0},"Spark of Resistance":{"k":"fragment","t":["resist"],"w":2.0},"Ember of Benevolence":{"k":"fragment","t":["grenade","heal","melee","radiant"],"w":2.0},"Facet of Courage":{"k":"fragment","t":["melee"],"w":2.0},"Thread of Evolution":{"k":"fragment","t":["threadling"],"w":2.0},"Whisper of Rime":{"k":"fragment","t":["frostarmor","resist"],"w":1.6},"Spark of Beacons":{"k":"fragment","t":["amplified","blind","weapon"],"w":1.6},"Echo of Vigilance":{"k":"fragment","t":["heal","overshield","resist"],"w":1.6},"Facet of Protection":{"k":"fragment","t":["resist"],"w":1.6},"Thread of Generation":{"k":"fragment","t":["grenade"],"w":1.6},"Echo of Obscurity":{"k":"fragment","t":["invis","melee"],"w":1.6},"Facet of Dominance":{"k":"fragment","t":["grenade","jolt","weaken"],"w":1.6},"Echo of Undermining":{"k":"fragment","t":["grenade","weaken"],"w":1.6},"Ember of Torches":{"k":"fragment","t":["melee","radiant"],"w":1.6},"Ember of Char":{"k":"fragment","t":["ignition","scorch"],"w":1.3},"Whisper of Shards":{"k":"fragment","t":["crystal","grenade","shatter"],"w":1.3},"Whisper of Conduction":{"k":"fragment","t":["shard"],"w":1.3},"Ember of Singeing":{"k":"fragment","t":["scorch"],"w":1.3},"Ember of Ashes":{"k":"fragment","t":["scorch"],"w":1.3},"Spark of Shock":{"k":"fragment","t":["grenade","jolt"],"w":1.3},"Whisper of Torment":{"k":"fragment","t":["frostarmor","grenade","resist"],"w":1.3},"Whisper of Impetus":{"k":"fragment","t":["melee","weapon"],"w":1.3},"Thread of Warding":{"k":"fragment","t":["orb","resist","wovenmail"],"w":1.3},"Thread of Ascent":{"k":"fragment","t":["grenade","weapon"],"w":1.3},"Facet of Hope":{"k":"fragment","t":[],"w":1.3},"Facet of Dawn":{"k":"fragment","t":["melee","radiant"],"w":1.3},"Ember of Searing":{"k":"fragment","t":["firesprite","melee","scorch"],"w":1.3},"Echo of Persistence":{"k":"fragment","t":["devour","invis","overshield","resist"],"w":1.3},"Ember of Solace":{"k":"fragment","t":["heal","radiant"],"w":1.3},"Thread of Fury":{"k":"fragment","t":["melee","tangle"],"w":1.3},"Facet of Generosity":{"k":"fragment","t":["orb","super","transcend"],"w":1.3},"Facet of Solitude":{"k":"fragment","t":["sever","transcend"],"w":1.3},"Thread of Isolation":{"k":"fragment","t":["sever"],"w":1.3},"Spark of Frequency":{"k":"fragment","t":["amplified","bolt","melee","weapon"],"w":1.3},"Whisper of Hunger":{"k":"fragment","t":["melee","shard"],"w":1.3},"Spark of Discharge":{"k":"fragment","t":["bolt","ionic","weapon"],"w":1.3},"Whisper of Chains":{"k":"fragment","t":["frostarmor","resist","shard"],"w":1.3},"Facet of Command":{"k":"fragment","t":["breach","freeze","shard","suppress","weapon"],"w":1.0},"Echo of Domineering":{"k":"fragment","t":["breach","suppress","weapon"],"w":1.0},"Whisper of Durance":{"k":"fragment","t":["slow"],"w":1.0},"Facet of Ruin":{"k":"fragment","t":["crystal","ignition","shatter"],"w":1.0},"Facet of Mending":{"k":"fragment","t":["grenade","heal"],"w":1.0},"Ember of Resolve":{"k":"fragment","t":["grenade","heal"],"w":1.0},"Whisper of Rending":{"k":"fragment","t":["crystal","freeze"],"w":1.0},"Echo of Reprisal":{"k":"fragment","t":["super"],"w":1.0},"Ember of Empyrean":{"k":"fragment","t":["heal","radiant"],"w":1.0},"Whisper of Refraction":{"k":"fragment","t":[],"w":1.0},"Spark of Magnitude":{"k":"fragment","t":["grenade"],"w":1.0},"Facet of Blessing":{"k":"fragment","t":["heal","melee","transcend"],"w":1.0},"Echo of Leeching":{"k":"fragment","t":["heal","melee"],"w":1.0},"Echo of Cessation":{"k":"fragment","t":["breach","melee","volatile"],"w":1.0},"Facet of Sacrifice":{"k":"fragment","t":["transcend"],"w":1.0},"Ember of Blistering":{"k":"fragment","t":["grenade","ignition"],"w":1.0},"Ember of Eruption":{"k":"fragment","t":["ignition"],"w":1.0},"Ember of Mercy":{"k":"fragment","t":["firesprite","heal"],"w":1.0},"Echo of Remnants":{"k":"fragment","t":[],"w":1.0},"Echo of Provision":{"k":"fragment","t":["grenade","melee"],"w":1.0},"Spark of Amplitude":{"k":"fragment","t":["amplified","orb","super"],"w":1.0},"Echo of Harvest":{"k":"fragment","t":["breach","orb","super","weaken"],"w":1.0},"Spark of Feedback":{"k":"fragment","t":["melee"],"w":1.0},"Facet of Awakening":{"k":"fragment","t":["super"],"w":1.0},"Facet of Balance":{"k":"fragment","t":["grenade","melee"],"w":1.0},"Spark of Ions":{"k":"fragment","t":["bolt","ionic","jolt"],"w":1.0},"Ember of Combustion":{"k":"fragment","t":["firesprite","ignition","super"],"w":1.0},"Whisper of Fractures":{"k":"fragment","t":["frostarmor","melee","resist","shatter"],"w":0.8},"Whisper of Bonds":{"k":"fragment","t":["freeze","orb","super"],"w":0.8},"Echo of Exchange":{"k":"fragment","t":["grenade","melee"],"w":0.8},"Ember of Wonder":{"k":"fragment","t":["ignition","orb","super"],"w":0.8},"Facet of Grace":{"k":"fragment","t":["super","transcend","weapon"],"w":0.8},"Whisper of Chill":{"k":"fragment","t":["shard","weapon"],"w":0.8},"Facet of Bravery":{"k":"fragment","t":["grenade","melee","unravel","volatile","weapon"],"w":0.8},"Echo of Instability":{"k":"fragment","t":["grenade","volatile","weapon"],"w":0.8},"Whisper of Fissures":{"k":"fragment","t":["crystal","shatter"],"w":0.8},"Echo of Expulsion":{"k":"fragment","t":[],"w":0.8},"Facet of Justice":{"k":"fragment","t":["transcend"],"w":0.8},"Thread of Rebirth":{"k":"fragment","t":["threadling","weapon"],"w":0.8},"Spark of Momentum":{"k":"fragment","t":["bolt","weapon"],"w":0.8},"Ember of Tempering":{"k":"fragment","t":["firesprite","heal","weapon"],"w":0.8},"Thread of Propagation":{"k":"fragment","t":["melee","unravel","weapon"],"w":0.8},"Thread of Wisdom":{"k":"fragment","t":["orb","super","suspend"],"w":0.8},"Thread of Mind":{"k":"fragment","t":["suspend"],"w":0.8},"Facet of Devotion":{"k":"fragment","t":["transcend"],"w":0.8},"Facet of Honor":{"k":"fragment","t":["shard","tangle","transcend"],"w":0.8},"Thread of Finality":{"k":"fragment","t":["melee","threadling"],"w":0.8},"Facet of Defiance":{"k":"fragment","t":["jolt","melee","scorch","sever","slow","super","volatile"],"w":0.8},"Thread of Continuity":{"k":"fragment","t":[],"w":0.8},"Ember of Beams":{"k":"fragment","t":["super"],"w":0.8},"Spark of Brilliance":{"k":"fragment","t":["blind"],"w":0.8},"Echo of Dilation":{"k":"fragment","t":[],"w":0.8},"Whisper of Hedrons":{"k":"fragment","t":["freeze","heal"],"w":0.5},"Whisper of Reversal":{"k":"fragment","t":["frostarmor","melee","resist","slow"],"w":0.5},"Spark of Volts":{"k":"fragment","t":["amplified","bolt","melee"],"w":0.5},"Spark of Recharge":{"k":"fragment","t":["grenade","heal","melee"],"w":0.5},"Thread of Transmutation":{"k":"fragment","t":["resist","tangle","weapon","wovenmail"],"w":0.5},"Spark of Focus":{"k":"fragment","t":[],"w":0.5},"Spark of Instinct":{"k":"fragment","t":["heal","jolt"],"w":0.5},"Thread of Binding":{"k":"fragment","t":["super","suspend"],"w":0.5},"Spark of Haste":{"k":"fragment","t":["heal"],"w":0.5},"Controlled Demolition":{"k":"aspect","t":["volatile"],"w":2.0},"Weavewalk":{"k":"aspect","t":["airborne","melee","orb","resist","threadling","weapon","wovenmail"],"w":2.0},"Tempest Strike":{"k":"aspect","t":["bolt","jolt","melee","resist"],"w":2.0},"Ascension":{"k":"aspect","t":["airborne","amplified","jolt"],"w":1.6},"Howl of the Storm":{"k":"aspect","t":["crystal","freeze","melee"],"w":1.6},"Feed the Void":{"k":"aspect","t":["devour","grenade"],"w":1.6},"Unbreakable":{"k":"aspect","t":["devour","grenade","orb","overshield","resist","super"],"w":1.6},"Winter's Shroud":{"k":"aspect","t":["resist","slow"],"w":1.6},"Roaring Flames":{"k":"aspect","t":["grenade","ignition","melee","scorch","super"],"w":1.6},"Knockout":{"k":"aspect","t":["amplified","heal","melee"],"w":1.6},"Threaded Specter":{"k":"aspect","t":["class","resist","threadling"],"w":1.6},"Sol Invictus":{"k":"aspect","t":["grenade","heal","melee","scorch","sunspot","super"],"w":1.6},"Consecration":{"k":"aspect","t":["ignition","melee","resist"],"w":1.3},"Lightning Surge":{"k":"aspect","t":["amplified","bolt","melee","resist"],"w":1.3},"Heat Rises":{"k":"aspect","t":["airborne","grenade","heal","melee","weapon"],"w":1.3},"Crackshot":{"k":"aspect","t":["class","heal","radiant","scorch"],"w":1.3},"Stylish Executioner":{"k":"aspect","t":["invis","melee","weaken"],"w":1.3},"Gunpowder Gamble":{"k":"aspect","t":["grenade","ignition","scorch","super"],"w":1.3},"Knock 'Em Down":{"k":"aspect","t":["heal","melee","radiant","resist","super"],"w":1.3},"Shatterdive":{"k":"aspect","t":["crystal","freeze","frostarmor","resist","shatter"],"w":1.3},"Tectonic Harvest":{"k":"aspect","t":["frostarmor","melee","resist","shard","shatter","weapon"],"w":1.3},"Banner of War":{"k":"aspect","t":["melee","super"],"w":1.3},"Ionic Sentry":{"k":"aspect","t":["blind","grenade"],"w":1.3},"Bleak Watcher":{"k":"aspect","t":["grenade","slow"],"w":1.3},"Chaos Accelerant":{"k":"aspect","t":["grenade","suppress"],"w":1.3},"Touch of Winter":{"k":"aspect","t":["crystal","freeze","shatter"],"w":1.3},"On Your Mark":{"k":"aspect","t":["heal","weapon"],"w":1.3},"Soul Siphon":{"k":"aspect","t":["melee","overshield","resist","weapon"],"w":1.3},"Whirling Maelstrom":{"k":"aspect","t":["tangle","unravel"],"w":1.3},"Grim Harvest":{"k":"aspect","t":["frostarmor","resist","shard","shatter","weapon"],"w":1.3},"Storm's Keep":{"k":"aspect","t":["bolt","class","weapon"],"w":1.3},"Diamond Lance":{"k":"aspect","t":["crystal","freeze","frostarmor","resist","shatter","weapon"],"w":1.0},"Ensnaring Slam":{"k":"aspect","t":["class","resist","suspend","wovenmail"],"w":1.0},"Frostpulse":{"k":"aspect","t":["freeze","frostarmor","resist"],"w":1.0},"On the Prowl":{"k":"aspect","t":["invis","melee","weaken","weapon"],"w":1.0},"Glacial Harvest":{"k":"aspect","t":["frostarmor","grenade","resist","shard","shatter","weapon"],"w":1.0},"Lethal Current":{"k":"aspect","t":["blind","jolt","melee"],"w":1.0},"Into the Fray":{"k":"aspect","t":["melee","resist","super","tangle","wovenmail"],"w":1.0},"Icarus Dash":{"k":"aspect","t":["airborne","heal"],"w":1.0},"Arc Soul":{"k":"aspect","t":["amplified"],"w":1.0},"Weaver's Call":{"k":"aspect","t":["threadling"],"w":1.0},"Electrostatic Mind":{"k":"aspect","t":["amplified","ionic"],"w":1.0},"Mindspun Invocation":{"k":"aspect","t":["melee","suspend","tangle","threadling"],"w":1.0},"Iceflare Bolts":{"k":"aspect","t":["freeze","shatter"],"w":1.0},"Hellion":{"k":"aspect","t":["scorch"],"w":1.0},"Touch of Thunder":{"k":"aspect","t":["bolt","ionic","jolt"],"w":1.0},"Touch of Flame":{"k":"aspect","t":["heal"],"w":0.8},"Child of the Old Gods":{"k":"aspect","t":["grenade","heal","melee","weaken","weapon"],"w":0.8},"Vanishing Step":{"k":"aspect","t":["class","invis"],"w":0.8},"Bastion":{"k":"aspect","t":["class","overshield","resist","super"],"w":0.8},"Offensive Bulwark":{"k":"aspect","t":["grenade","melee","overshield","resist"],"w":0.8},"Trapper's Ambush":{"k":"aspect","t":["class","devour","invis","weaken"],"w":0.8},"Flechette Storm":{"k":"aspect","t":["melee","resist","unravel"],"w":0.8},"Drengr's Lash":{"k":"aspect","t":["suspend"],"w":0.8},"Widow's Silk":{"k":"aspect","t":["grenade","melee"],"w":0.5},"Flow State":{"k":"aspect","t":["amplified","class","jolt","resist","weapon"],"w":0.5},"The Wanderer":{"k":"aspect","t":["suspend","tangle","threadling"],"w":0.5},"Shieldburst":{"k":"aspect","t":["class","scorch","weapon"],"w":0.5},"Juggernaut":{"k":"aspect","t":["amplified","bolt","overshield","resist"],"w":0.5},"Cryoclasm":{"k":"aspect","t":["crystal","shatter"],"w":0.5},"Amplified":{"k":"ability","t":["amplified","resist"],"w":1.0},"Bolt Charge":{"k":"ability","t":["bolt","crystal","freeze","ignition","jolt","melee","scorch","shatter","suspend","tangle","threadling","unravel","volatile","weapon"],"w":1.0},"Ionic Trace":{"k":"ability","t":["class","grenade","ionic","melee"],"w":1.0},"Blind":{"k":"ability","t":["blind"],"w":1.0},"Jolted":{"k":"ability","t":["jolt"],"w":1.0},"Amplitude":{"k":"ability","t":["amplified","orb","super"],"w":1.0},"Beacons":{"k":"ability","t":["amplified","blind","weapon"],"w":1.0},"Brilliance":{"k":"ability","t":["blind","weapon"],"w":1.0},"Discharge":{"k":"ability","t":["bolt","ionic","weapon"],"w":1.0},"Feedback":{"k":"ability","t":["melee"],"w":1.0},"Focus":{"k":"ability","t":["class"],"w":1.0},"Frequency":{"k":"ability","t":["amplified","bolt","melee","weapon"],"w":1.0},"Haste":{"k":"ability","t":["heal"],"w":1.0},"Instinct":{"k":"ability","t":["heal","jolt"],"w":1.0},"Ions":{"k":"ability","t":["bolt","ionic","jolt"],"w":1.0},"Magnitude":{"k":"ability","t":["grenade"],"w":1.0},"Momentum":{"k":"ability","t":["bolt","weapon"],"w":1.0},"Recharge":{"k":"ability","t":["grenade","heal","melee"],"w":1.0},"Resistance":{"k":"ability","t":["resist"],"w":1.0},"Shock":{"k":"ability","t":["grenade","jolt"],"w":1.0},"Volts":{"k":"ability","t":["amplified","bolt","melee"],"w":1.0},"Arcbolt Grenade":{"k":"ability","t":[],"w":1.0},"Flashbang Grenade":{"k":"ability","t":["blind"],"w":1.0},"Flux Grenade":{"k":"ability","t":[],"w":1.0},"Lightning Grenade":{"k":"ability","t":[],"w":1.0},"Pulse Grenade":{"k":"ability","t":[],"w":1.0},"Skip Grenade":{"k":"ability","t":[],"w":1.0},"Storm Grenade":{"k":"ability","t":[],"w":1.0},"Combination Blow":{"k":"ability","t":["class","heal","melee"],"w":1.0},"Disorienting Blow":{"k":"ability","t":["amplified","blind","bolt"],"w":1.0},"Arc Staff":{"k":"ability","t":["airborne","blind","bolt","class","resist","super"],"w":1.0},"Gathering Storm":{"k":"ability","t":["jolt","resist","super"],"w":1.0},"Storm's Edge":{"k":"ability","t":["melee","resist","super"],"w":1.0},"Thruster":{"k":"ability","t":[],"w":1.0},"Ballistic Slam":{"k":"ability","t":["airborne","bolt","melee","super"],"w":1.0},"Seismic Strike":{"k":"ability","t":["amplified","blind","melee"],"w":1.0},"Thunderclap":{"k":"ability","t":["melee","resist"],"w":1.0},"Fists of Havoc":{"k":"ability","t":["blind","resist","super"],"w":1.0},"Thundercrash":{"k":"ability","t":["resist","super"],"w":1.0},"Ball Lightning":{"k":"ability","t":["amplified"],"w":1.0},"Chain Lightning":{"k":"ability","t":["amplified","jolt","melee"],"w":1.0},"Chaos Reach":{"k":"ability","t":["jolt","resist","super"],"w":1.0},"Stormtrance":{"k":"ability","t":["jolt","resist","super"],"w":1.0},"Cure":{"k":"ability","t":["heal"],"w":1.0},"Firesprite":{"k":"ability","t":["firesprite","grenade"],"w":1.0},"Radiant":{"k":"ability","t":["radiant","weapon"],"w":1.0},"Restoration":{"k":"ability","t":["class","grenade","heal"],"w":1.0},"Ignition":{"k":"ability","t":["grenade","ignition","melee","scorch"],"w":1.0},"Scorch":{"k":"ability","t":["ignition","scorch"],"w":1.0},"Ashes":{"k":"ability","t":["scorch"],"w":1.0},"Beams":{"k":"ability","t":["melee","super"],"w":1.0},"Benevolence":{"k":"ability","t":["class","grenade","heal","melee","overshield","radiant","resist"],"w":1.0},"Blistering":{"k":"ability","t":["grenade","ignition"],"w":1.0},"Char":{"k":"ability","t":["ignition","scorch"],"w":1.0},"Combustion":{"k":"ability","t":["firesprite","ignition","super","weapon"],"w":1.0},"Empyrean":{"k":"ability","t":["heal","radiant"],"w":1.0},"Eruption":{"k":"ability","t":["ignition"],"w":1.0},"Mercy":{"k":"ability","t":["firesprite","heal"],"w":1.0},"Searing":{"k":"ability","t":["firesprite","melee","scorch"],"w":1.0},"Singeing":{"k":"ability","t":["class","scorch"],"w":1.0},"Solace":{"k":"ability","t":["heal","radiant"],"w":1.0},"Tempering":{"k":"ability","t":["airborne","firesprite","heal","weapon"],"w":1.0},"Torches":{"k":"ability","t":["melee","radiant"],"w":1.0},"Wonder":{"k":"ability","t":["ignition","orb","super"],"w":1.0},"Firebolt Grenade":{"k":"ability","t":["scorch"],"w":1.0},"Fusion Grenade":{"k":"ability","t":["scorch"],"w":1.0},"Healing Grenade":{"k":"ability","t":["heal","orb"],"w":1.0},"Incendiary Grenade":{"k":"ability","t":["grenade","scorch"],"w":1.0},"Solar Grenade":{"k":"ability","t":["scorch"],"w":1.0},"Swarm Grenade":{"k":"ability","t":["scorch"],"w":1.0},"Thermite Grenade":{"k":"ability","t":["scorch"],"w":1.0},"Tripmine Grenade":{"k":"ability","t":["scorch"],"w":1.0},"Acrobat's Dodge":{"k":"ability","t":["radiant"],"w":1.0},"Knife Trick":{"k":"ability","t":["melee","scorch","weapon"],"w":1.0},"Lightweight Knife":{"k":"ability","t":["melee","radiant","weapon"],"w":1.0},"Proximity Explosive Knife":{"k":"ability","t":["melee","weapon"],"w":1.0},"Weighted Throwing Knife":{"k":"ability","t":["class","ignition","melee","scorch","weapon"],"w":1.0},"Blade Barrage":{"k":"ability","t":["melee","resist","scorch","super"],"w":1.0},"Hammer Strike":{"k":"ability","t":["ignition","melee","scorch"],"w":1.0},"Throwing Hammer":{"k":"ability","t":["heal","melee"],"w":1.0},"Burning Maul":{"k":"ability","t":["resist","scorch","sunspot","super"],"w":1.0},"Hammer of Sol":{"k":"ability","t":["airborne","resist","super"],"w":1.0},"Phoenix Dive":{"k":"ability","t":["heal","scorch"],"w":1.0},"Celestial Fire":{"k":"ability","t":["scorch"],"w":1.0},"Incinerator Snap":{"k":"ability","t":["scorch"],"w":1.0},"Song of Flame":{"k":"ability","t":["class","grenade","heal","melee","radiant","resist","scorch","super","weapon"],"w":1.0},"Daybreak":{"k":"ability","t":["resist","scorch","super"],"w":1.0},"Well of Radiance":{"k":"ability","t":["freeze","heal","orb","radiant","resist","scorch","shatter","super","weapon"],"w":1.0},"Devour":{"k":"ability","t":["devour","grenade"],"w":1.0},"Invisibility":{"k":"ability","t":["class","grenade","heal","invis","melee","super","weapon"],"w":1.0},"Overshield":{"k":"ability","t":["heal","overshield","resist"],"w":1.0},"Void Breach":{"k":"ability","t":["breach","class"],"w":1.0},"Suppression":{"k":"ability","t":["grenade","melee","super","suppress","transcend"],"w":1.0},"Volatile":{"k":"ability","t":["volatile"],"w":1.0},"Volatile Rounds":{"k":"ability","t":["volatile","weapon"],"w":1.0},"Weaken":{"k":"ability","t":["slow","weaken"],"w":1.0},"Cessation":{"k":"ability","t":["breach","melee","volatile"],"w":1.0},"Dilation":{"k":"ability","t":[],"w":1.0},"Domineering":{"k":"ability","t":["breach","suppress","weapon"],"w":1.0},"Exchange":{"k":"ability","t":["grenade","melee"],"w":1.0},"Expulsion":{"k":"ability","t":[],"w":1.0},"Harvest":{"k":"ability","t":["breach","orb","super","weaken"],"w":1.0},"Instability":{"k":"ability","t":["grenade","volatile","weapon"],"w":1.0},"Leeching":{"k":"ability","t":["heal","melee"],"w":1.0},"Obscurity":{"k":"ability","t":["invis","melee"],"w":1.0},"Persistence":{"k":"ability","t":["devour","invis","overshield","resist"],"w":1.0},"Provision":{"k":"ability","t":["grenade","melee","super","suppress"],"w":1.0},"Remnants":{"k":"ability","t":["grenade"],"w":1.0},"Reprisal":{"k":"ability","t":["super"],"w":1.0},"Starvation":{"k":"ability","t":["breach","devour","orb"],"w":1.0},"Undermining":{"k":"ability","t":["grenade","weaken"],"w":1.0},"Vigilance":{"k":"ability","t":["heal","overshield","resist"],"w":1.0},"Axion Bolt":{"k":"ability","t":["slow"],"w":1.0},"Magnetic Grenade":{"k":"ability","t":[],"w":1.0},"Scatter Grenade":{"k":"ability","t":[],"w":1.0},"Suppressor Grenade":{"k":"ability","t":["suppress"],"w":1.0},"Void Spike":{"k":"ability","t":[],"w":1.0},"Void Wall":{"k":"ability","t":[],"w":1.0},"Vortex Grenade":{"k":"ability","t":[],"w":1.0},"Phantom Surge":{"k":"ability","t":["melee","overshield","resist"],"w":1.0},"Snare Bomb":{"k":"ability","t":["invis","weaken"],"w":1.0},"Spectral Blades":{"k":"ability","t":["invis","melee","resist","super","weaken"],"w":1.0},"On The Prowl":{"k":"ability","t":["class","grenade","invis","melee","weaken","weapon"],"w":1.0},"Shield Bash":{"k":"ability","t":["melee","overshield","resist","suppress"],"w":1.0},"Shield Throw":{"k":"ability","t":["overshield","resist"],"w":1.0},"Sentinel Shield":{"k":"ability","t":["airborne","grenade","orb","overshield","resist","super","weapon"],"w":1.0},"Twilight Arsenal":{"k":"ability","t":["melee","resist","super","weaken","weapon"],"w":1.0},"Pocket Singularity":{"k":"ability","t":["melee","volatile"],"w":1.0},"Nova Bomb: Cataclysm":{"k":"ability","t":["airborne","resist","slow","super"],"w":1.0},"Nova Warp":{"k":"ability","t":["resist","super","volatile","weaken"],"w":1.0},"Stasis Shard":{"k":"ability","t":["crystal","freeze","frostarmor","melee","resist","shard","shatter","slow"],"w":1.0},"Stasis Crystal":{"k":"ability","t":["crystal","freeze","heal","slow"],"w":1.0},"Frost Armor":{"k":"ability","t":["frostarmor","resist","super"],"w":1.0},"Slow":{"k":"ability","t":["freeze","slow","weapon"],"w":1.0},"Freeze":{"k":"ability","t":["class","freeze","heal","melee","shatter","super","weapon"],"w":1.0},"Shatter":{"k":"ability","t":["freeze","shatter"],"w":1.0},"Bonds":{"k":"ability","t":["freeze","orb","super"],"w":1.0},"Chains":{"k":"ability","t":["frostarmor","resist","shard"],"w":1.0},"Chill":{"k":"ability","t":["shard","weapon"],"w":1.0},"Conduction":{"k":"ability","t":["shard"],"w":1.0},"Durance":{"k":"ability","t":["slow"],"w":1.0},"Fissures":{"k":"ability","t":["crystal","shatter"],"w":1.0},"Fractures":{"k":"ability","t":["frostarmor","melee","resist","shatter"],"w":1.0},"Hedrons":{"k":"ability","t":["freeze","heal"],"w":1.0},"Hunger":{"k":"ability","t":["melee","shard"],"w":1.0},"Impetus":{"k":"ability","t":["melee","weapon"],"w":1.0},"Refraction":{"k":"ability","t":["class"],"w":1.0},"Rending":{"k":"ability","t":["crystal","freeze","weapon"],"w":1.0},"Reversal":{"k":"ability","t":["frostarmor","melee","resist","slow"],"w":1.0},"Rime":{"k":"ability","t":["frostarmor","resist"],"w":1.0},"Shards":{"k":"ability","t":["crystal","grenade"],"w":1.0},"Torment":{"k":"ability","t":["frostarmor","grenade","resist"],"w":1.0},"Coldsnap Grenade":{"k":"ability","t":["freeze","grenade","slow"],"w":1.0},"Duskfield Grenade":{"k":"ability","t":["slow"],"w":1.0},"Glacier Grenade":{"k":"ability","t":["crystal","grenade","shatter"],"w":1.0},"Shatter Grenade":{"k":"ability","t":["freeze","slow"],"w":1.0},"Withering Blade":{"k":"ability","t":["melee","slow"],"w":1.0},"Silence & Squall":{"k":"ability","t":["freeze","resist","slow","super"],"w":1.0},"Shiver Strike":{"k":"ability","t":["crystal","melee","shatter","slow"],"w":1.0},"Glacial Quake":{"k":"ability","t":["crystal","freeze","melee","orb","resist","shatter","slow","super"],"w":1.0},"Penumbral Blast":{"k":"ability","t":["freeze"],"w":1.0},"Winter's Wrath":{"k":"ability","t":["crystal","freeze","resist","shard","shatter","super"],"w":1.0},"Tangle":{"k":"ability","t":["grenade","sever","suspend","tangle","unravel"],"w":1.0},"Grapple Tangle":{"k":"ability","t":["grenade","melee","tangle"],"w":1.0},"Threadling":{"k":"ability","t":["melee","threadling","weapon"],"w":1.0},"Woven Mail":{"k":"ability","t":["melee","resist","super","weapon","wovenmail"],"w":1.0},"Sever":{"k":"ability","t":[],"w":1.0},"Suspend":{"k":"ability","t":["airborne","slow","suspend","weapon"],"w":1.0},"Unravel":{"k":"ability","t":["unravel"],"w":1.0},"Unraveling Rounds":{"k":"ability","t":["unravel","weapon"],"w":1.0},"Ascent":{"k":"ability","t":["airborne","grenade","weapon"],"w":1.0},"Binding":{"k":"ability","t":["super","suspend"],"w":1.0},"Continuity":{"k":"ability","t":[],"w":1.0},"Evolution":{"k":"ability","t":["threadling"],"w":1.0},"Finality":{"k":"ability","t":["melee","threadling"],"w":1.0},"Fury":{"k":"ability","t":["melee","tangle"],"w":1.0},"Generation":{"k":"ability","t":["grenade"],"w":1.0},"Isolation":{"k":"ability","t":["sever","weapon"],"w":1.0},"Mind":{"k":"ability","t":["class","suspend"],"w":1.0},"Propagation":{"k":"ability","t":["melee","unravel","weapon"],"w":1.0},"Rebirth":{"k":"ability","t":["threadling","weapon"],"w":1.0},"Transmutation":{"k":"ability","t":["resist","tangle","weapon","wovenmail"],"w":1.0},"Warding":{"k":"ability","t":["orb","resist","wovenmail"],"w":1.0},"Wisdom":{"k":"ability","t":["orb","super","suspend"],"w":1.0},"Grapple":{"k":"ability","t":["airborne","grenade","melee","super","tangle","unravel"],"w":1.0},"Shackle Grenade":{"k":"ability","t":["suspend"],"w":1.0},"Slicewire":{"k":"ability","t":["grenade","sever"],"w":1.0},"Threadling Grenade":{"k":"ability","t":["airborne","threadling"],"w":1.0},"Threaded Spike":{"k":"ability","t":["melee","resist","sever","wovenmail"],"w":1.0},"Silkstrike":{"k":"ability","t":["class","grenade","resist","super"],"w":1.0},"Frenzied Blade":{"k":"ability","t":["melee","sever"],"w":1.0},"Bladefury":{"k":"ability","t":["melee","resist","super","suspend"],"w":1.0},"Into The Fray":{"k":"ability","t":["melee","resist","super","tangle","wovenmail"],"w":1.0},"Arcane Needle":{"k":"ability","t":["melee","unravel"],"w":1.0},"Needlestorm":{"k":"ability","t":["resist","super","threadling"],"w":1.0},"Transcendence":{"k":"ability","t":["grenade","melee","resist","transcend","weapon"],"w":1.0},"Elemental Effects":{"k":"ability","t":["amplified","blind","bolt","breach","class","devour","firesprite","freeze","frostarmor","heal","ignition","invis","ionic","jolt","overshield","radiant","resist","scorch","sever","shard","shatter","slow","suppress","suspend","tangle","threadling","unravel","volatile","weaken","wovenmail"],"w":1.0},"Awakening":{"k":"ability","t":["super","tangle"],"w":1.0},"Balance":{"k":"ability","t":["grenade","melee"],"w":1.0},"Blessing":{"k":"ability","t":["heal","melee","transcend"],"w":1.0},"Bravery":{"k":"ability","t":["grenade","melee","unravel","volatile","weapon"],"w":1.0},"Command":{"k":"ability","t":["airborne","breach","freeze","shard","suppress","weapon"],"w":1.0},"Courage":{"k":"ability","t":["melee"],"w":1.0},"Dawn":{"k":"ability","t":["melee","radiant"],"w":1.0},"Defiance":{"k":"ability","t":["jolt","melee","scorch","sever","slow","super","volatile"],"w":1.0},"Devotion":{"k":"ability","t":["transcend"],"w":1.0},"Dominance":{"k":"ability","t":["grenade","jolt","weaken"],"w":1.0},"Generosity":{"k":"ability","t":["orb","super","transcend"],"w":1.0},"Grace":{"k":"ability","t":["super","transcend","weapon"],"w":1.0},"Honor":{"k":"ability","t":["breach","firesprite","ionic","shard","tangle","transcend"],"w":1.0},"Hope":{"k":"ability","t":["class"],"w":1.0},"Justice":{"k":"ability","t":["transcend"],"w":1.0},"Mending":{"k":"ability","t":["grenade","heal"],"w":1.0},"Protection":{"k":"ability","t":["resist","transcend"],"w":1.0},"Purpose":{"k":"ability","t":["bolt","frostarmor","heal","orb","overshield","resist","super","wovenmail"],"w":1.0},"Ruin":{"k":"ability","t":["crystal","ignition","shatter"],"w":1.0},"Sacrifice":{"k":"ability","t":["transcend"],"w":1.0},"Solitude":{"k":"ability","t":["sever","transcend","weapon"],"w":1.0},"Hailfire Spike":{"k":"ability","t":["grenade","scorch","slow"],"w":1.0},"Electrified Snare":{"k":"ability","t":["grenade","jolt","super","suspend"],"w":1.0},"Freezing Singularity":{"k":"ability","t":["grenade","slow","suppress"],"w":1.0},"Gambler's Dodge":{"k":"ability","t":["class","melee"],"w":1.0},"Marksman's Dodge":{"k":"ability","t":["class","weapon"],"w":1.0},"Rally Barricade":{"k":"ability","t":["class","resist","weapon"],"w":1.0},"Towering Barricade":{"k":"ability","t":["class","resist"],"w":1.0},"Empowering Rift":{"k":"ability","t":["class","grenade","melee","resist","weapon"],"w":1.0},"Healing Rift":{"k":"ability","t":["class","heal","overshield","resist"],"w":1.0}},"exotics":{"Assassin's Cowl":{"t":["heal","invis","melee"],"m":["Invisibility"],"c":"Hunter"},"Abeyant Leap":{"t":["class","resist","suspend","wovenmail"],"m":["Drengr's Lash","Thruster","Woven Mail"],"c":"Titan"},"Apotheosis Veil":{"t":["class","grenade","heal","melee","super"],"m":[],"c":"Warlock"},"Athrys's Embrace":{"t":["melee","weapon"],"m":["Weighted Throwing Knife"],"c":"Hunter"},"ACD/0 Feedback Fence":{"t":["jolt","melee","resist"],"m":[],"c":"Titan"},"Astrocyte Verse":{"t":["airborne","super","volatile"],"m":["Nova Warp","Volatile","Volatile Rounds"],"c":"Warlock"},"Balance of Power":{"t":["class","resist","threadling"],"m":["Threaded Specter"],"c":"Hunter"},"Actium War Rig":{"t":["airborne","weapon"],"m":["Generation"],"c":"Titan"},"Ballidorse Wrathweavers":{"t":["class","freeze","frostarmor","resist","shatter","super","weapon"],"m":["Frost Armor","Frostpulse","Shatter","Winter's Wrath"],"c":"Warlock"},"Blight Ranger":{"t":["blind","super","weapon"],"m":["Arc Staff"],"c":"Hunter"},"An Insurmountable Skullfort":{"t":["heal","melee"],"m":["Knockout"],"c":"Titan"},"Boots of the Assembler":{"t":["airborne","class","heal"],"m":["Empowering Rift","Healing Rift","Well of Radiance"],"c":"Warlock"},"The Bombardiers":{"t":["blind","class","scorch","sever","slow","super","suppress"],"m":["Scorch"],"c":"Hunter"},"Antaeus Wards":{"t":["class"],"m":[],"c":"Titan"},"Briarbinds":{"t":["resist"],"m":[],"c":"Warlock"},"Caliban's Hand":{"t":["ignition","melee","scorch"],"m":["Ignition","Knife Trick","Proximity Explosive Knife","Recharge","Scorch"],"c":"Hunter"},"Arbor Warden":{"t":["class","grenade","orb"],"m":["Bastion","Towering Barricade"],"c":"Titan"},"Cenotaph Mask":{"t":["weapon"],"m":[],"c":"Warlock"},"Celestial Nighthawk":{"t":["ignition","super","weapon"],"m":["Ignition"],"c":"Hunter"},"Armamentarium":{"t":["grenade","weapon"],"m":[],"c":"Titan"},"Chromatic Fire":{"t":["blind","crystal","scorch","sever","slow","super","weaken","weapon"],"m":["Scorch","Weaken"],"c":"Warlock"},"Cyrtarachne's Facade":{"t":["resist","wovenmail"],"m":["Resistance","Woven Mail"],"c":"Hunter"},"Ashen Wake":{"t":["grenade"],"m":[],"c":"Titan"},"Claws of Ahamkara":{"t":["melee"],"m":[],"c":"Warlock"},"The Dragon's Shadow":{"t":["class","weapon"],"m":[],"c":"Hunter"},"Blastwave Striders":{"t":["freeze","frostarmor","resist","slow"],"m":["Freeze","Frost Armor","Howl of the Storm","Shiver Strike"],"c":"Titan"},"Contraverse Hold":{"t":["grenade","resist","weaken"],"m":["Chaos Accelerant","Exchange","Weaken"],"c":"Warlock"},"Foetracer":{"t":["weapon"],"m":[],"c":"Hunter"},"Cadmus Ridge Lancecap":{"t":["class","crystal","frostarmor","resist","super","weapon"],"m":["Diamond Lance","Frost Armor","Rally Barricade","Stasis Crystal"],"c":"Titan"},"Crown of Tempests":{"t":["grenade","jolt","melee","super"],"m":["Conduction","Ionic Sentry","Storm Grenade","Stormtrance"],"c":"Warlock"},"Fortune’s Favor":{"t":["heal","overshield","resist","weapon"],"m":["Overshield"],"c":"Hunter"},"Citan's Ramparts":{"t":["class"],"m":["Towering Barricade"],"c":"Titan"},"Dawn Chorus":{"t":["ignition","melee","scorch"],"m":["Daybreak","Ignition","Scorch"],"c":"Warlock"},"Fr0st-EE5":{"t":["class","frostarmor","grenade","melee","resist","weapon"],"m":["Frost Armor","Whisper of Rime"],"c":"Hunter"},"Crest of Alpha Lupi":{"t":["class","heal","orb","super"],"m":["Thruster"],"c":"Titan"},"Deimosuffusion":{"t":["class","heal","super","suspend"],"m":["Continuity","Suspend","Thread of Continuity"],"c":"Warlock"},"Gemini Jester":{"t":["class"],"m":[],"c":"Hunter"},"Cuirass of the Falling Star":{"t":["amplified","melee","resist","super"],"m":["Amplified","Thundercrash"],"c":"Titan"},"Eunoia":{"t":["scorch"],"m":["Hellion","Scorch"],"c":"Warlock"},"Graviton Forfeit":{"t":["class","grenade","invis","melee","overshield","resist"],"m":["Invisibility","Overshield"],"c":"Hunter"},"Doom Fang Pauldron":{"t":["melee","super","weapon"],"m":["Sentinel Shield","Shield Throw"],"c":"Titan"},"Eye of Another World":{"t":["airborne","grenade","invis","melee","super"],"m":[],"c":"Warlock"},"Gifted Conviction":{"t":["jolt","resist"],"m":["Ascension","Tempest Strike"],"c":"Hunter"},"Dunemarchers":{"t":["bolt","melee"],"m":["Bolt Charge"],"c":"Titan"},"Fallen Sunstar":{"t":["class","grenade","ionic","melee"],"m":["Ionic Trace"],"c":"Warlock"},"Gwisin Vest":{"t":["invis","super"],"m":["Invisibility","Snare Bomb","Spectral Blades","Trapper's Ambush"],"c":"Hunter"},"Eternal Warrior":{"t":["overshield","resist","super","weapon"],"m":["Fists of Havoc","Overshield"],"c":"Titan"},"Felwinter's Helm":{"t":["melee","weaken"],"m":["Grapple","Song of Flame","Weaken"],"c":"Warlock"},"Gyrfalcon's Hauberk":{"t":["class","invis","melee","overshield","resist","volatile"],"m":["Invisibility","Overshield","Volatile","Volatile Rounds"],"c":"Hunter"},"Hallowfire Heart":{"t":["class","freeze","grenade","heal","ignition","melee","super"],"m":["Shieldburst"],"c":"Titan"},"Geomag Stabilizers":{"t":["bolt","ionic","super"],"m":["Bolt Charge","Chaos Reach","Ionic Trace"],"c":"Warlock"},"Khepri's Sting":{"t":["melee","weaken"],"m":["Snare Bomb"],"c":"Hunter"},"Hazardous Propulsion":{"t":["class","weapon"],"m":["Thruster"],"c":"Titan"},"Getaway Artist":{"t":["amplified","devour","grenade"],"m":["Amplified","Arc Soul","Devour"],"c":"Warlock"},"Knucklehead Radar":{"t":["airborne","heal","weapon"],"m":[],"c":"Hunter"},"Heart of Inmost Light":{"t":["class","grenade","melee","super"],"m":["Thunderclap"],"c":"Titan"},"Karnstein Armlets":{"t":["heal","melee"],"m":["Restoration"],"c":"Warlock"},"Liar's Handshake":{"t":["melee"],"m":[],"c":"Hunter"},"Helm of Saint-14":{"t":["super","suppress","weapon"],"m":["Suppression"],"c":"Titan"},"Lunafaction Boots":{"t":["weapon"],"m":[],"c":"Warlock"},"Lucky Pants":{"t":["airborne"],"m":[],"c":"Hunter"},"Hoarfrost-Z":{"t":["class","crystal","super"],"m":["Rally Barricade","Thruster","Towering Barricade"],"c":"Titan"},"Mataiodoxía":{"t":["melee","super","suspend"],"m":["Arcane Needle","Needlestorm"],"c":"Warlock"},"Lucky Raspberry":{"t":["grenade","jolt"],"m":["Arcbolt Grenade"],"c":"Hunter"},"Icefall Mantle":{"t":["class","frostarmor","resist","slow","super"],"m":["Frost Armor"],"c":"Titan"},"Mantle of Battle Harmony":{"t":["super","weapon"],"m":[],"c":"Warlock"},"Mask of Bakris":{"t":["class","invis","super","weapon"],"m":["Acrobat's Dodge","Chain Lightning","Marksman's Dodge"],"c":"Hunter"},"Khepri's Horn":{"t":["class","ignition","scorch","sunspot","super"],"m":["Roaring Flames","Scorch"],"c":"Titan"},"Necrotic Grip":{"t":["airborne","melee","weapon"],"m":[],"c":"Warlock"},"Mask of Fealty":{"t":["crystal","melee","shatter"],"m":["Stasis Crystal","Withering Blade"],"c":"Hunter"},"Lion Rampant":{"t":["airborne","weapon"],"m":[],"c":"Titan"},"Nezarec's Sin":{"t":["grenade","melee","super","suppress"],"m":["Soul Siphon","Suppression"],"c":"Warlock"},"Mechaneer's Tricksleeves":{"t":["airborne","heal","weapon"],"m":[],"c":"Hunter"},"Loreley Splendor":{"t":["class","heal","sunspot","super"],"m":["Sol Invictus","Towering Barricade"],"c":"Titan"},"Nothing Manacles":{"t":["grenade"],"m":["Scatter Grenade"],"c":"Warlock"},"Moirai":{"t":["melee","tangle"],"m":["Tangle","Threaded Spike"],"c":"Hunter"},"Mask of the Quiet One":{"t":["class","devour","grenade","heal","melee","super"],"m":["Devour"],"c":"Titan"},"Ophidian Aspect":{"t":["airborne","weapon"],"m":[],"c":"Warlock"},"Mothkeeper’s Wraps":{"t":["blind","grenade","overshield","resist"],"m":["Overshield"],"c":"Hunter"},"Melas Panoplia":{"t":["firesprite","melee"],"m":["Firesprite","Throwing Hammer"],"c":"Titan"},"Osmiomancy Gloves":{"t":["grenade"],"m":["Coldsnap Grenade"],"c":"Warlock"},"Oathkeeper":{"t":["airborne","crystal","weapon"],"m":[],"c":"Hunter"},"Mk. 44 Stand Asides":{"t":["bolt"],"m":["Bolt Charge","Juggernaut"],"c":"Titan"},"Phoenix Protocol":{"t":["super"],"m":["Well of Radiance"],"c":"Warlock"},"Omnioculus":{"t":["heal","invis","melee","resist","super"],"m":["Invisibility","Resistance"],"c":"Hunter"},"No Backup Plans":{"t":["airborne","amplified","frostarmor","heal","melee","overshield","resist","super","weapon","wovenmail"],"m":["Amplified","Frost Armor","Glacial Quake","Hammer of Sol","Overshield","Restoration","Sentinel Shield","Woven Mail"],"c":"Titan"},"Promethium Spurs":{"t":["class","heal","radiant","super","weapon"],"m":["Daybreak","Empowering Rift","Healing Rift","Radiant","Well of Radiance"],"c":"Warlock"},"Ophidia Spathe":{"t":["class","melee"],"m":["Gambler's Dodge","Recharge"],"c":"Hunter"},"One-Eyed Mask":{"t":["overshield","resist"],"m":["Overshield"],"c":"Titan"},"Rain of Fire":{"t":["airborne","radiant","weapon"],"m":["Icarus Dash","Radiant","Weavewalk"],"c":"Warlock"},"Orpheus Rig":{"t":["class","grenade","melee","super"],"m":[],"c":"Hunter"},"The Path of Burning Steps":{"t":["freeze","ignition","slow","suspend","weapon"],"m":["Freeze","Ignition","Suspend"],"c":"Titan"},"Rime-Coat Raiment":{"t":["crystal","slow","super"],"m":["Bleak Watcher"],"c":"Warlock"},"Raiden Flux":{"t":["jolt","slow","super"],"m":["Arc Staff"],"c":"Hunter"},"Peacekeepers":{"t":["airborne"],"m":[],"c":"Titan"},"Sanguine Alchemy":{"t":["class","super","weapon"],"m":["Well of Radiance"],"c":"Warlock"},"Raiju's Harness":{"t":["amplified","jolt","super"],"m":["Amplified","Gathering Storm","Jolted"],"c":"Hunter"},"Peregrine Greaves":{"t":["airborne","freeze","melee"],"m":["Hammer Strike","Seismic Strike","Shield Bash"],"c":"Titan"},"Secant Filaments":{"t":["class","devour","super"],"m":["Devour","Empowering Rift"],"c":"Warlock"},"Radiant Dance Machines":{"t":["airborne","class","weapon"],"m":[],"c":"Hunter"},"Phoenix Cradle":{"t":["grenade","heal","sunspot","weapon"],"m":["Healing Grenade","Sol Invictus"],"c":"Titan"},"Skull of Dire Ahamkara":{"t":["devour","resist","super","weapon"],"m":["Devour"],"c":"Warlock"},"Renewal Grasps":{"t":["crystal","frostarmor","grenade","resist","slow"],"m":["Duskfield Grenade","Frost Armor","Stasis Crystal","Touch of Winter"],"c":"Hunter"},"Point-Contact Cannon Brace":{"t":["amplified","jolt","melee"],"m":["Amplified","Discharge","Thunderclap"],"c":"Titan"},"Speaker's Sight":{"t":["grenade","heal","orb","super"],"m":["Healing Grenade","Restoration","Touch of Flame"],"c":"Warlock"},"Sealed Ahamkara Grasps":{"t":["airborne","melee","weapon"],"m":["Grapple"],"c":"Hunter"},"Praxic Vestment":{"t":["airborne","blind","melee","weapon"],"m":[],"c":"Titan"},"Starfire Protocol":{"t":["class","grenade","radiant","weapon"],"m":["Empowering Rift","Fusion Grenade","Radiant","Well of Radiance"],"c":"Warlock"},"Shards of Galanor":{"t":["ignition","melee","scorch","super"],"m":["Blade Barrage","Ignition","Knock 'Em Down","Scorch"],"c":"Hunter"},"Precious Scars":{"t":["heal","overshield","resist","super","weapon"],"m":["Overshield","Restoration"],"c":"Titan"},"The Stag":{"t":["class","heal","resist"],"m":["Healing Rift","Well of Radiance"],"c":"Warlock"},"Shinobu's Vow":{"t":["bolt","grenade"],"m":["Bolt Charge","Skip Grenade"],"c":"Hunter"},"Pyrogale Gauntlets":{"t":["scorch","super"],"m":["Burning Maul","Consecration","Generation","Scorch"],"c":"Titan"},"Stormdancer's Brace":{"t":["amplified","bolt","super"],"m":["Amplified","Amplitude","Bolt Charge","Stormtrance"],"c":"Warlock"},"The Sixth Coyote":{"t":["class"],"m":[],"c":"Hunter"},"Second Chance":{"t":["breach","melee","weaken"],"m":["Sentinel Shield","Shield Throw","Void Breach","Weaken"],"c":"Titan"},"Sunbracers":{"t":["grenade","melee"],"m":[],"c":"Warlock"},"Speedloader Slacks":{"t":["class","weapon"],"m":[],"c":"Hunter"},"Severance Enclosure":{"t":["melee","sever"],"m":[],"c":"Titan"},"Swarmers":{"t":["tangle","threadling","unravel"],"m":["Tangle","Unravel"],"c":"Warlock"},"Star-Eater Scales":{"t":["orb","overshield","resist","super"],"m":["Overshield"],"c":"Hunter"},"Stronghold":{"t":["heal","resist","weapon"],"m":["Resistance","Restoration"],"c":"Titan"},"Transversive Steps":{"t":["weapon"],"m":[],"c":"Warlock"},"St0mp-EE5":{"t":["airborne","resist"],"m":[],"c":"Hunter"},"Synthoceps":{"t":["melee","super","weapon"],"m":[],"c":"Titan"},"Verity's Brow":{"t":["grenade","melee","weapon"],"m":["Grapple"],"c":"Warlock"},"Triton Vice":{"t":["melee","weapon"],"m":[],"c":"Hunter"},"Ursa Furiosa":{"t":["grenade","super"],"m":["Sentinel Shield","Unbreakable"],"c":"Titan"},"Vesper of Radius":{"t":["blind","class","super"],"m":[],"c":"Warlock"},"Wormhusk Crown":{"t":["class","grenade","heal","melee","super"],"m":["Restoration"],"c":"Hunter"},"Wishful Ignorance":{"t":["melee"],"m":["Banner of War","Flechette Storm","Frenzied Blade"],"c":"Titan"},"Wings of Sacred Dawn":{"t":["airborne","heal","resist","super","weapon"],"m":["Restoration"],"c":"Warlock"},"Young Ahamkara's Spine":{"t":["grenade","melee","scorch"],"m":["Crackshot","Scorch","Tripmine Grenade"],"c":"Hunter"},"Wormgod Caress":{"t":["melee","weapon"],"m":[],"c":"Titan"},"Winter's Guile":{"t":["melee","scorch"],"m":["Scorch"],"c":"Warlock"},"Sect of Force\n\nFoebreaker Chant":{"t":["grenade","melee","weapon"],"m":[],"c":"Hunter"},"Sect of Insight\n\nArmsbearer Chant":{"t":["orb","super","weapon"],"m":[],"c":"Titan"},"Sect of Vigor\n\nLightgiver Chant":{"t":["class","heal","resist"],"m":[],"c":"Warlock"}},"exw":{"Ace of Spades":["weapon"],"Ager's Scepter":["slow","super","weapon"],"Alethonym":["grenade","weapon"],"Arbalest":["weapon"],"Bad Juju":["super","weapon"],"Barrow-Dyad":["weapon"],"Bastion":["melee","weapon"],"Cerberus +1":["crystal","weapon"],"The Chaperone":["weapon"],"Conditional Finality":["freeze","heal","ignition","weapon"],"Crimson":["heal","weapon"],"Cryosthesia 77K":["freeze","slow","weapon"],"Cull's Shadow":["crystal","melee","resist","weapon"],"Dead Man's Tale":["weapon"],"Euphony":["threadling","weapon"],"Final Warning":["slow","unravel","weapon"],"Forerunner":["grenade","slow","weapon"],"Hawkmoon":["weapon"],"Huckleberry":["weapon"],"Izanagi's Burden":["slow","weapon"],"The Jade Rabbit":["weapon"],"Khvostov 7G-0X":["orb"],"The Last Word":["weapon"],"Lumina":["weapon"],"Malfeasance":["weapon"],"MIDA Multi-Tool":["weapon"],"Monte Carlo":["melee","weapon"],"Necrochasm":["weapon"],"New Land Beyond":["slow","weapon"],"New Malpais":["suspend","unravel","weapon"],"No Time to Explain":["weapon"],"Osteo Striga":["slow","weapon"],"Outbreak Perfected":["weapon"],"Praxic Blade":["bolt","crystal","heal","melee","resist","weapon"],"Praxic Blade 2:":["amplified","bolt","heal","melee","scorch","sever","slow","super","weaken","weapon"],"Quicksilver Storm":["grenade","tangle","weapon"],"Rat King":["heal","invis","weapon"],"Revision Zero":["weapon"],"Sturm":["weapon"],"SUROS Regime":["heal","weapon"],"Sweet Business":["weapon"],"The Navigator":["heal","resist","sever","tangle","weapon","wovenmail"],"Thorn":["airborne","devour","weapon"],"Touch of Malice":["blind","heal","resist","slow","weapon"],"Traveler's Chosen":["class","grenade","melee","weapon"],"Verglas Curve":["crystal","freeze","slow"],"Vigilance Wing":["heal","weapon"],"Wicked Implement":["crystal","shard","shatter","slow","weapon"],"Wish-Ender":["weapon"],"Wish-Keeper":["suspend","weapon"],"Witherhoard":["grenade"],"Borealis":["super","weapon"],"Buried Bloodline":["devour","weaken","weapon"],"Centrifuse":["amplified","blind","weapon"],"Choir of One":["slow","weapon"],"Cloudstrike":["bolt","sever","weapon"],"Coldheart":["ionic","slow","super","weapon"],"Collective Obligation":["devour","suppress","volatile","weaken","weapon"],"Dead Messenger":["grenade","weapon"],"Delicate Tomb":["ionic","jolt","weapon"],"Devil's Ruin":["firesprite","ignition","scorch","suspend","weapon"],"Divinity":["jolt","weaken","weapon"],"Duality":["weapon"],"Edge of Action":["melee","overshield","resist","suppress","weapon"],"Edge of Concurrence":["jolt","melee","weapon"],"Edge of Intent":["heal","melee","weapon"],"Ergo Sum":["grenade"],"Eriana's Vow":["ignition","super","weapon"],"Ex Diris":["amplified","blind","grenade","heal","overshield","resist","weapon"],"Fighting Lion":["grenade","volatile","weapon"],"Graviton Lance":["orb","weapon"],"Graviton Spike":["crystal","transcend","weapon"],"Hard Light":["weapon"],"Heirloom":["scorch","weapon"],"Hierarchy of Needs":["scorch","super","unravel","volatile","weapon"],"Ice Breaker":["crystal","freeze","ignition","shatter","weapon"],"Jötunn":[],"Le Monarque":["weapon"],"Lodestar":["amplified","blind","jolt","super","weapon"],"Lord of Wolves":["scorch","weapon"],"Lorentz Driver":["weapon"],"Merciless":["heal","weapon"],"Polaris Lance":["scorch","weapon"],"Prometheus Lens":["scorch","weapon"],"Red Death Reformed":["heal","orb","weapon"],"Riskrunner":["resist"],"Ruinous Effigy":["airborne","melee","resist","suppress","volatile","weapon"],"Skyburner's Oath":["scorch","weapon"],"Slayer's Fang":["breach","weaken","weapon"],"Still Hunt":["orb","super","suppress","weapon"],"Sunshot":["scorch","weapon"],"Symmetry":["bolt","class","weapon"],"Tarrabah":["resist","scorch","weapon"],"Telesto":["weapon"],"Tessellation":["blind","grenade","scorch","sever","slow","transcend","weaken","weapon"],"The Fourth Horseman":["weapon"],"The Manticore":["airborne","overshield","resist","weapon"],"Third Iteration":["invis","weaken","weapon"],"Ticuu's Divination":["weapon"],"Tommy's Matchbook":["heal","ignition","overshield","resist","scorch","weapon"],"Trespasser":["weapon"],"Trinity Ghoul":["weapon"],"Turncoat":["overshield","resist","weaken","weapon"],"Wavesplitter":["orb","super","suppress","weapon"],"Vex Mythoclast":["ignition","weapon"],"Vexcalibur":["heal","melee","overshield","resist","weapon"],"Anarchy":["amplified","grenade","jolt"],"Black Talon":["suppress","weapon"],"D.A.R.C.I.":["heal","jolt","weapon"],"Deathbringer":["airborne","orb","slow"],"Deterministic Chaos":["volatile","weaken","weapon"],"Dragon's Breath":["firesprite","ignition","scorch","weapon"],"Eyes of Tomorrow":["weapon"],"Fafnir":["weaken","weapon"],"Finality's Auger":["weapon"],"Gjallarhorn":["weapon"],"Grand Overture":["blind","slow","weapon"],"Heartshadow":["invis","orb","weaken","weapon"],"Heir Apparent":["resist","weapon"],"Legend of Acrius":["weapon"],"Leviathan's Breath":["volatile","weapon"],"Microcosm":["super","weapon"],"One Thousand Voices":["scorch"],"Salvation's Grip":["crystal","freeze","grenade","shatter","weapon"],"Service of Luzaku":["heal","tangle","threadling","weapon"],"Sleeper Simulant":["weapon"],"Parasite":["weapon"],"The Colony":["grenade"],"The Lament":["scorch","weapon"],"The Prospector":["grenade","weapon"],"The Queenbreaker":["blind","grenade","melee","super","weapon"],"The Wardcliff Coil":["bolt","weapon"],"Thunderlord":["bolt","weapon"],"Tractor Cannon":["suppress","weaken"],"Truth":["weapon"],"Two-Tailed Fox":["jolt","scorch","suppress","weapon"],"Whirling Ovation":["grenade","weapon"],"Whisper of the Worm":["weapon"],"Winterbite":["freeze","melee","orb","slow","weapon"],"Wolfsbane":["airborne","melee","orb","resist","weapon"],"Worldline Zero":["weapon"],"Xenophage":["weapon"]}};
-const WEIGHT_PLUGS = Object.fromEntries(Object.entries(BUILD_WEIGHTS.plugs).map(([k, v]) => [norm(k), v]));
-const WEIGHT_EXOTICS = Object.fromEntries(Object.entries(BUILD_WEIGHTS.exotics).map(([k, v]) => [norm(k), v]));
+const BUILD_WEIGHTS = { tagw: {}, plugs: {}, exotics: {}, exw: {} }; // filled from data/*.csv (loadTagData)
+const WEIGHT_PLUGS = {};
+const WEIGHT_EXOTICS = {};
+
+/* ---------- tag data (data/*.csv) ----------
+   Every tag-based synergy is read from CSV files next to this page, so they can be edited without touching the HTML:
+     tag_points.csv      Tag, Points                                  points a shared tag is worth
+     tiers.csv           Tier, Weight                                 tier letter -> weight multiplier
+     exotic_weapons.csv  Exotic, Tags                                 exotic weapon weighting
+     exotic_armor.csv    Exotic, Class, Tags, Mentions                build tags and boosted plugs per exotic armor
+     subclass_plugs.csv  Name, Kind, Tier, Tags                       aspects, fragments and abilities
+     set_bonuses.csv     Set, Pieces, Bonus, Tier, Tags, Weapon types armor set bonuses
+   Lists inside a cell are comma-separated. Names match the game's names (case and curly quotes don't matter). */
+const TAG_FILES = ["tag_points", "tiers", "exotic_weapons", "exotic_armor", "subclass_plugs", "set_bonuses"];
+async function loadTagData() {
+  const text = {};
+  try {
+    await Promise.all(TAG_FILES.map(async f => {
+      const res = await fetch(`data/${f}.csv`, { cache: "no-cache" });
+      if (!res.ok) throw new Error(`data/${f}.csv: HTTP ${res.status}`);
+      text[f] = await res.text();
+    }));
+  } catch (e) {
+    log("Couldn't load the tag files; rolls won't be weighted by synergy tags: " + e.message);
+    return;
+  }
+  const table = f => {
+    const rows = parseCSV(text[f]).filter(r => r.some(c => c.trim()));
+    const head = (rows.shift() || []).map(norm);
+    return rows.map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] || "").trim()])));
+  };
+  const list = v => splitList(v).map(x => x.trim()).filter(Boolean);
+  const problems = [];
+  const badTags = new Set();
+  const tagList = v => { const t = list(v).map(norm); for (const x of t) if (!(x in BUILD_WEIGHTS.tagw)) badTags.add(x); return t; };
+
+  for (const r of table("tag_points")) if (r.tag) BUILD_WEIGHTS.tagw[norm(r.tag)] = r.points === "" || isNaN(Number(r.points)) ? 1 : Number(r.points);
+  const tier = {};
+  for (const r of table("tiers")) if (r.tier) tier[norm(r.tier)] = Number(r.weight);
+  const tierW = (t, where) => {
+    if (!t) return 1;
+    const w = tier[norm(t)];
+    if (w == null || isNaN(w)) { problems.push(`unknown tier "${t}" (${where})`); return 1; }
+    return w;
+  };
+  for (const r of table("exotic_weapons")) if (r.exotic) BUILD_WEIGHTS.exw[r.exotic] = tagList(r.tags);
+  for (const r of table("exotic_armor")) if (r.exotic) BUILD_WEIGHTS.exotics[r.exotic] = { t: tagList(r.tags), m: list(r.mentions), c: r.class };
+  for (const r of table("subclass_plugs")) if (r.name) BUILD_WEIGHTS.plugs[r.name] = { k: norm(r.kind), w: tierW(r.tier, r.name), t: tagList(r.tags) };
+  for (const r of table("set_bonuses")) {
+    if (!r.set || !r.pieces) continue;
+    (SET_BONUSES[r.set] ||= {})[r.pieces] = { n: r.bonus, w: tierW(r.tier, `${r.set} ${r.pieces}-piece`), t: tagList(r.tags), wt: list(r["weapon types"]) };
+  }
+  for (const [src, dst] of [[BUILD_WEIGHTS.plugs, WEIGHT_PLUGS], [BUILD_WEIGHTS.exotics, WEIGHT_EXOTICS], [SET_BONUSES, SET_BY_NORM]]) {
+    for (const k of Object.keys(dst)) delete dst[k];
+    for (const [k, v] of Object.entries(src)) dst[norm(k)] = v;
+  }
+  EXW_TAGS = null;
+
+  // Names that match nothing in the game would silently do nothing; list them.
+  const gameNames = (type, tier) => new Set(Object.values(state.defs || {}).filter(d => d.itemType === type && d.tier === tier).map(d => norm(d.name)));
+  const wNames = gameNames(ITEMTYPE_WEAPON, TIER_EXOTIC), aNames = gameNames(ITEMTYPE_ARMOR, TIER_EXOTIC);
+  const unknownW = Object.keys(BUILD_WEIGHTS.exw).filter(n => wNames.size && !wNames.has(norm(n)));
+  const unknownA = Object.keys(BUILD_WEIGHTS.exotics).filter(n => aNames.size && !aNames.has(norm(n)));
+  if (unknownW.length) problems.push(`exotic_weapons.csv: no exotic weapon named ${unknownW.map(n => `"${n}"`).join(", ")}`);
+  if (unknownA.length) problems.push(`exotic_armor.csv: no exotic armor named ${unknownA.map(n => `"${n}"`).join(", ")}`);
+  if (badTags.size) problems.push(`tags not in tag_points.csv (count 1 point): ${[...badTags].map(t => `"${t}"`).join(", ")}`);
+  log(`Tag data loaded: ${Object.keys(BUILD_WEIGHTS.exw).length} exotic weapons, ${Object.keys(BUILD_WEIGHTS.exotics).length} exotic armor, ${Object.keys(BUILD_WEIGHTS.plugs).length} subclass plugs, ${Object.keys(SET_BONUSES).length} armor sets.`);
+  if (problems.length) log("Tag data warnings: " + problems.join("; ") + ".");
+}
 
 function buildContext(exoticName) {
   const ex = exoticName ? WEIGHT_EXOTICS[norm(exoticName)] : null;
@@ -1570,479 +1084,6 @@ async function applyMods(plans, cid) {
   else log("Mods applied.");
 }
 
-/* ---------- rendering ---------- */
-function locationLabel(i) {
-  if (i.virtual) return "Collections — pull it";
-  if (i.owner === VAULT) return "Vault";
-  const c = state.characters[i.owner];
-  const who = c ? CLASS_NAME[c.classType] : "Character";
-  return i.equipped ? `${who} (equipped)` : who;
-}
-
-function itemRow(i, sub, action) {
-  const tr = document.createElement("tr");
-  const tdIcon = document.createElement("td");
-  if (i.def.icon) {
-    const img = document.createElement("img"); img.src = BUNGIE + i.def.icon; img.alt = "";
-    if (i.def.itemType === ITEMTYPE_WEAPON) {
-      const wrap = document.createElement("div"); wrap.className = "icon-wrap";
-      wrap.append(img, ...champBadges(i));
-      tdIcon.append(wrap);
-    } else tdIcon.append(img);
-  }
-  const tdName = document.createElement("td");
-  tdName.textContent = i.def.name;
-  if (isExo(i)) tdName.className = "exotic";
-  const s = document.createElement("div");
-  s.className = "muted";
-  s.textContent = sub;
-  tdName.append(s);
-  const tdLoc = document.createElement("td");
-  if (action) {
-    tdLoc.className = "act";
-    const b = document.createElement("button");
-    b.className = "small"; b.textContent = "Reroll"; b.title = "Reroll this weapon";
-    b.onclick = action;
-    b.dataset.reroll = "1";
-    tdLoc.append(b);
-  } else {
-    tdLoc.className = "muted";
-    tdLoc.textContent = locationLabel(i);
-  }
-  tr.append(tdIcon, tdName, tdLoc);
-  return tr;
-}
-
-/* Bungie's strand class-ability and movement icons are the wrong color; DIM applies the same filter. */
-const STRAND_WRONG_COLOR = [2480042224, 2552562702, 2200902275, 2139679542, 1979332108, 3728449707];
-function iconRow(label, icon, value, plugHash) {
-  const tr = document.createElement("tr");
-  const a = document.createElement("td"); a.className = "label"; a.textContent = label;
-  const b = document.createElement("td"); b.className = "icons";
-  if (icon) {
-    const img = document.createElement("img"); img.src = BUNGIE + icon; img.alt = "";
-    const pd = plugHash ? plugDef(plugHash) : null;
-    if (pd && (STRAND_WRONG_COLOR.includes(pd.ch) || /\.strand\.(class_abilities|movement)$/.test(pd.c || ""))) img.className = "strandfix";
-    b.append(img);
-  }
-  b.append(document.createTextNode(value));
-  tr.append(a, b);
-  return tr;
-}
-
-function labelRow(label, value) {
-  const tr = document.createElement("tr");
-  const a = document.createElement("td"); a.className = "label"; a.textContent = label;
-  const b = document.createElement("td"); b.textContent = value;
-  tr.append(a, b);
-  return tr;
-}
-
-function renderRoll() {
-  const wt = $("weaponTable"); wt.replaceChildren();
-  for (const i of state.roll.weapons || []) wt.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${AMMO_NAME[i.def.ammo]} · ${DMG_NAME[i.dmg] || ""} ${i.def.typeName}`, () => busy(() => rerollOne(i.def.bucket))));
-  const at = $("armorTable"); at.replaceChildren();
-  for (const i of state.roll.armor || []) {
-    at.append(itemRow(i, `${SLOT_NAME[i.def.bucket]} · ${i.power}`));
-  }
-  const mt = $("modTable"); mt.replaceChildren();
-  for (const plan of state.roll.mods || []) {
-    const tr = document.createElement("tr");
-    const a = document.createElement("td"); a.className = "label"; a.textContent = SLOT_NAME[plan.item.def.bucket];
-    const b = document.createElement("td"); b.className = "icons";
-    for (const p of plan.placed.slice().sort((x, y) => x.idx - y.idx)) {
-      const span = document.createElement("span");
-      span.style.marginRight = "14px";
-      span.style.whiteSpace = "nowrap";
-      if (plugDef(p.hash)?.i) { const img = document.createElement("img"); img.src = BUNGIE + plugDef(p.hash).i; img.alt = ""; span.append(img); }
-      span.append(document.createTextNode(p.name));
-      b.append(span);
-    }
-    if (plan.missing.length) {
-      const d = document.createElement("div");
-      d.className = "missing";
-      d.textContent = "Skipped: " + plan.missing.map(x => `${x.name} (${x.why})`).join("; ");
-      b.append(d);
-    }
-    tr.append(a, b);
-    mt.append(tr);
-  }
-  const st = $("subclassTable"); st.replaceChildren();
-  const r = state.roll.subclass;
-  if (r) {
-    const el = r.info.element === "prism" ? `Prismatic (${DMG_NAME[r.element] || "?"} super)` : DMG_NAME[r.element] || "";
-    st.append(iconRow("Subclass", r.info.s.def.icon, `${r.info.s.def.name} — ${el}`));
-    for (const a of r.abilities) st.append(iconRow(PLUG_LABEL[a.kind] || "Ability", plugDef(a.hash)?.i, plugName(a.hash), a.hash));
-    if (!r.aspects.length) st.append(iconRow("Aspects", "", "—"));
-    for (const h of r.aspects) st.append(iconRow("Aspect", plugDef(h)?.i, plugName(h)));
-    if (!r.fragments.length) st.append(iconRow("Fragments", "", "—"));
-    for (const h of r.fragments) st.append(iconRow("Fragment", plugDef(h)?.i, plugName(h)));
-  }
-  const pulls = (state.roll.weapons || []).filter(i => i.virtual);
-  const note = $("weaponNote");
-  note.hidden = !pulls.length;
-  note.textContent = pulls.length ? `Pull ${pulls.map(i => i.def.name).join(", ")} from Collections, then equip it — the API can't pull from Collections.` : "";
-  const all = [...(state.roll.weapons || []), ...(state.roll.armor || [])];
-  $("dimString").value = all.map(i => i.virtual ? `exactname:"${i.def.name}"` : "id:" + i.id).join(" or ");
-  $("btnEquip").disabled = !(all.length || r);
-}
-
-function renderExoticList(list) {
-  const isW = list === "w";
-  const cls = selectedClass();
-  const ok = d => isW
-    ? d.itemType === ITEMTYPE_WEAPON && WEAPON_BUCKETS.includes(d.bucket) && d.ammo
-    : d.itemType === ITEMTYPE_ARMOR && ARMOR_BUCKETS.includes(d.bucket) && d.classType === cls;
-  const names = [...new Set(Object.values(state.defs)
-    .filter(d => d.tier === TIER_EXOTIC && ok(d) && d.name && d.name !== "?" && !/classified/i.test(d.name))
-    .map(d => d.name))].sort((a, b) => a.localeCompare(b));
-  const owned = new Set(state.items.filter(i => isExo(i) && ok(i.def)).map(i => i.def.name));
-  const off = exoticOff(list);
-  const box = $(isW ? "exwList" : "exaList");
-  box.replaceChildren();
-  let eligible = 0, ownedCount = 0;
-  for (const name of names) {
-    const lab = document.createElement("label");
-    const h = owned.has(name);
-    lab.className = h ? "owned" : "unowned";
-    lab.title = h ? "Owned" : "Not owned";
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = !off.has(name);
-    cb.onchange = () => {
-      const s = exoticOff(list);
-      if (cb.checked) s.delete(name); else s.add(name);
-      store.set("d2r_off_" + list, [...s]);
-      renderExoticList(list);
-    };
-    lab.append(cb, " " + name);
-    box.append(lab);
-    if (h) ownedCount++;
-    if ((h || (isW && state.rules.unownedExotics)) && !off.has(name)) eligible++;
-  }
-  box.dataset.names = JSON.stringify(names);
-  box.dataset.owned = JSON.stringify([...owned]);
-  $(isW ? "exwCount" : "exaCount").textContent = `${eligible} eligible · ${ownedCount} owned · ${names.length} total`;
-  if (!isW) $("exaClass").textContent = CLASS_NAME[cls] || "";
-}
-
-function setExoticList(list, mode) {
-  const box = $(list === "w" ? "exwList" : "exaList");
-  const names = JSON.parse(box.dataset.names || "[]");
-  const owned = new Set(JSON.parse(box.dataset.owned || "[]"));
-  const off = exoticOff(list);
-  for (const n of names) {
-    const on = mode === "all" || (mode === "owned" && owned.has(n));
-    if (on) off.delete(n); else off.add(n);
-  }
-  store.set("d2r_off_" + list, [...off]);
-  renderExoticList(list);
-}
-
-function populateChars() {
-  const sel = $("charSelect");
-  const prev = sel.value;
-  sel.replaceChildren();
-  const chars = Object.entries(state.characters).sort((a, b) => new Date(b[1].dateLastPlayed) - new Date(a[1].dateLastPlayed));
-  for (const [cid, c] of chars) {
-    const o = document.createElement("option");
-    o.value = cid;
-    o.textContent = `${CLASS_NAME[c.classType]} (${c.light})`;
-    sel.append(o);
-  }
-  if (prev && state.characters[prev]) sel.value = prev;
-}
-
-const selectedChar = () => $("charSelect").value;
-const selectedClass = () => state.characters[selectedChar()]?.classType;
-
-/* ---------- equipping ---------- */
-async function transfer(item, toVault, charId) {
-  await bungie("/Destiny2/Actions/Items/TransferItem/", {
-    method: "POST",
-    body: { itemReferenceHash: item.hash, stackSize: 1, transferToVault: toVault, itemId: item.id, characterId: charId, membershipType: state.membership.type },
-  });
-  item.owner = toVault ? VAULT : charId;
-  item.equipped = false;
-  await sleep(120);
-}
-
-async function makeRoom(cid, bucket, protectedIds) {
-  const inBucket = state.items.filter(i => i.owner === cid && !i.equipped && i.def.bucket === bucket);
-  if (inBucket.length < CHAR_BUCKET_CAPACITY) return;
-  const victim = inBucket.find(i => !protectedIds.has(i.id));
-  if (!victim) throw new Error(`No free ${SLOT_NAME[bucket]} space on character.`);
-  log(`Moving ${victim.def.name} to vault to make room.`);
-  await transfer(victim, true, cid);
-}
-
-async function dequip(item, protectedIds) {
-  const owner = item.owner;
-  const cls = state.characters[owner].classType;
-  const fits = i => i.def.bucket === item.def.bucket && !protectedIds.has(i.id) && !isExo(i)
-                 && (i.def.itemType === ITEMTYPE_WEAPON || i.def.classType === cls);
-  let rep = state.items.find(i => i.owner === owner && !i.equipped && fits(i));
-  if (!rep) {
-    rep = state.items.find(i => i.owner === VAULT && fits(i));
-    if (!rep) throw new Error(`Can't free ${item.def.name}: no replacement for that slot.`);
-    await makeRoom(owner, item.def.bucket, protectedIds);
-    await transfer(rep, false, owner);
-  }
-  log(`Swapping ${item.def.name} off ${CLASS_NAME[cls]} (equipping ${rep.def.name}).`);
-  await bungie("/Destiny2/Actions/Items/EquipItem/", {
-    method: "POST",
-    body: { itemId: rep.id, characterId: owner, membershipType: state.membership.type },
-  });
-  rep.equipped = true;
-  item.equipped = false;
-  await sleep(120);
-}
-
-async function equipSet(cid, items) {
-  if (!items.length) return;
-  const r = await bungie("/Destiny2/Actions/Items/EquipItems/", {
-    method: "POST",
-    body: { itemIds: items.map(i => i.id), characterId: cid, membershipType: state.membership.type },
-  });
-  return r;
-}
-
-async function freshSubclassInfo(cid, itemId) {
-  state.socketData = null;
-  delete state.subInfo[cid];
-  const infos = await getSubclassInfo(cid);
-  return infos.find(x => x.s.id === itemId) || null;
-}
-
-async function applySubclass(r) {
-  const { charId } = r;
-  const m = state.membership;
-  const info = (await freshSubclassInfo(charId, r.info.s.id)) || r.info;
-  const item = info.s;
-  r.errors = {};
-  const current = state.items.find(i => i.id === item.id);
-  r.subclassEquipped = !!(current ? current.equipped : item.equipped);
-  if (!r.subclassEquipped) {
-    log(`Equipping ${item.def.name}.`);
-    try {
-      await bungie("/Destiny2/Actions/Items/EquipItem/", { method: "POST", body: { itemId: item.id, characterId: charId, membershipType: m.type } });
-      r.subclassEquipped = true;
-    } catch (e) { r.errors.subclass = e.message; }
-    await sleep(200);
-  }
-  // Profile reads can be cached and stale right after changes, so track socket state from each
-  // insert's own response (as DIM does) instead of re-reading the profile.
-  const cur = info.cur.slice();
-  const insert = async (idx, hash) => {
-    if (!hash || cur[idx] === hash) return;
-    try {
-      await socketGap();
-      const res = await bungie("/Destiny2/Actions/Items/InsertSocketPlugFree/", {
-        method: "POST",
-        body: { plug: { socketIndex: idx, socketArrayType: 0, plugItemHash: hash }, itemId: item.id, characterId: charId, membershipType: m.type },
-      });
-      const sockets = res?.item?.sockets?.data?.sockets;
-      if (sockets) sockets.forEach((sk, i) => { cur[i] = sk.plugHash || 0; });
-      else cur[idx] = hash;
-      delete r.errors[hash];
-    } catch (e) {
-      if (/SocketAlreadyHasPlug/i.test(e.message)) cur[idx] = hash; // already there: success
-      else r.errors[hash] = e.message;
-    }
-  };
-  r.finalCur = cur;
-  const placeGroup = async (idxs, targets) => {
-    const want = new Set(targets), kept = new Set(), free = [];
-    for (const idx of idxs) {
-      if (want.has(cur[idx]) && !kept.has(cur[idx])) kept.add(cur[idx]); else free.push(idx);
-    }
-    const rest = targets.filter(h => !kept.has(h));
-    for (let k = 0; k < rest.length && k < free.length; k++) await insert(free[k], rest[k]);
-  };
-
-  for (const a of r.abilities) await insert(a.idx, a.hash);
-
-  // Clear fragment sockets beyond the new fragment count first, so nothing is duplicated or stranded.
-  const fIdx = info.groups.fragments || [];
-  for (const idx of fIdx.slice(r.fragments.length)) {
-    const init = info.def.e[idx]?.i;
-    if (init && cur[idx] !== init && !isEmptyPlug(cur[idx])) await insert(idx, init);
-  }
-  await placeGroup(info.groups.aspects || [], r.aspects);
-  await placeGroup(fIdx.slice(0, r.fragments.length), r.fragments);
-}
-
-function verifySubclass(r) {
-  const cur = r.finalCur || [];
-  const problems = [];
-  if (!r.subclassEquipped) problems.push(`${r.info.s.def.name} not equipped${r.errors?.subclass ? ` (${r.errors.subclass})` : ""}`);
-  const curSet = new Set(cur);
-  const why = h => (r.errors?.[h] ? ` (${r.errors[h]})` : "");
-  for (const a of r.abilities) if (cur[a.idx] !== a.hash) problems.push(`${plugName(a.hash)}${why(a.hash)}`);
-  for (const h of [...r.aspects, ...r.fragments]) if (!curSet.has(h)) problems.push(`${plugName(h)}${why(h)}`);
-  if (problems.length) log("Subclass — not applied: " + problems.join("; "));
-  else log(`Subclass applied: ${r.info.s.def.name}.`);
-  return problems;
-}
-
-/* ---------- apply notification (modelled on DIM's loadout notification) ---------- */
-function makeToast(title) {
-  let wrap = document.querySelector(".toast-wrap");
-  if (!wrap) { wrap = document.createElement("div"); wrap.className = "toast-wrap"; document.body.append(wrap); }
-  const el = document.createElement("div"); el.className = "toast";
-  const head = document.createElement("div"); head.className = "toast-head";
-  const t = document.createElement("b"); t.textContent = title;
-  const x = document.createElement("button"); x.className = "toast-x"; x.textContent = "×"; x.title = "Dismiss"; x.onclick = () => el.remove();
-  head.append(t, x);
-  const phase = document.createElement("div"); phase.className = "toast-phase muted";
-  const rows = document.createElement("div");
-  const msgs = document.createElement("div");
-  el.append(head, phase, rows, msgs);
-  wrap.append(el);
-  const imgs = {};
-  return {
-    phase(text) { phase.textContent = text; },
-    icons(list) {
-      const row = document.createElement("div"); row.className = "toast-icons";
-      for (const it of list) {
-        const img = document.createElement("img");
-        img.src = it.icon ? BUNGIE + it.icon : ""; img.alt = ""; img.title = it.name; img.className = "pending";
-        imgs[it.key] = img; row.append(img);
-      }
-      if (list.length) rows.append(row);
-    },
-    mark(key, ok) { const img = imgs[key]; if (img) img.className = ok ? "" : "fail"; },
-    note(text, kind) { const d = document.createElement("div"); d.className = "toast-msg " + (kind || ""); d.textContent = text; msgs.append(d); },
-    done(problems) {
-      if (problems.length) {
-        el.classList.add("bad"); t.textContent = title.replace(/…$/, "") + " — finished with problems";
-        phase.textContent = "Failed";
-        const locked = problems.some(p => /AtThisLocation|CannotPerformAction/i.test(p));
-        if (locked) this.note("The game won't change gear here. Go to orbit or a social space and equip again.", "warn");
-        this.note(`${problems.length} problem${problems.length === 1 ? "" : "s"}: ` + problems.join("; "), "err");
-      } else {
-        el.classList.add("ok"); t.textContent = title.replace(/…$/, "") + " — applied";
-        phase.textContent = "Succeeded";
-        // Stays until dismissed, or until this tab has been visible for 30 s in total since finishing.
-        let shown = 0, last = performance.now();
-        const tick = setInterval(() => {
-          const now = performance.now();
-          if (!document.hidden) shown += now - last;
-          last = now;
-          if (!el.isConnected) clearInterval(tick);
-          else if (shown >= 30000) { clearInterval(tick); el.style.opacity = "0"; setTimeout(() => el.remove(), 450); }
-        }, 250);
-      }
-    },
-  };
-}
-
-async function equipRoll() {
-  const cid = selectedChar();
-  const cls = selectedClass();
-  const toast = makeToast(`Applying to ${CLASS_NAME[cls]}…`);
-  const problems = [];
-  const sub = state.roll.subclass && state.roll.subclass.charId === cid ? state.roll.subclass : null;
-  if (state.roll.subclass && !sub) log("Subclass roll is for a different character; skipping subclass.");
-  const weapons = state.roll.weapons || [];
-  let armor = state.roll.armor || [];
-  if (armor.length && state.roll.armorClass !== cls) {
-    log("Armor roll is for a different class; skipping armor.");
-    armor = [];
-  }
-  const virtual = weapons.filter(i => i.virtual);
-  const roll = [...weapons, ...armor].filter(i => !i.virtual);
-  toast.icons([
-    ...(sub ? [{ key: "subclass", icon: sub.info.s.def.icon, name: sub.info.s.def.name }] : []),
-    ...roll.map(i => ({ key: i.id, icon: i.def.icon, name: i.def.name })),
-  ]);
-  const doMods = !!(state.rules.mods && state.roll.mods && state.roll.armorClass === cls);
-  if (doMods) toast.icons(state.roll.mods.flatMap(plan => plan.placed.map(pl => ({ key: "mod:" + plan.item.id + ":" + pl.idx, icon: plugDef(pl.hash)?.i, name: pl.name }))));
-  for (const v of virtual) {
-    log(`${v.def.name} isn't in your inventory — pull it from Collections, then equip it.`);
-    toast.note(`Pull ${v.def.name} from Collections, then equip it.`, "warn");
-  }
-  let subErr = null;
-  try {
-    if (sub) {
-      toast.phase("Applying subclass");
-      try { await applySubclass(sub); } catch (e) { subErr = e.message; log("Subclass error: " + e.message); }
-    }
-    if (roll.length) {
-      toast.phase("Moving items");
-      const protectedIds = new Set(roll.map(i => i.id));
-      for (const it of roll) {
-        if (it.owner === cid) continue;
-        try {
-          if (it.equipped) await dequip(it, protectedIds);
-          if (it.owner !== VAULT) { log(`${it.def.name} → vault`); await transfer(it, true, it.owner); }
-          await makeRoom(cid, it.def.bucket, protectedIds);
-          log(`${it.def.name} → ${CLASS_NAME[cls]}`);
-          await transfer(it, false, cid);
-        } catch (e) { problems.push(`${it.def.name}: ${e.message}`); toast.mark(it.id, false); }
-      }
-      toast.phase("Equipping items");
-      // Legendaries first so a currently equipped exotic is replaced before the new exotic goes on.
-      for (const group of [roll.filter(i => !isExo(i)), roll.filter(isExo)]) {
-        try { await equipSet(cid, group); } catch (e) { problems.push("Equip: " + e.message); }
-      }
-    }
-    toast.phase("Checking");
-    await loadProfile();
-    const byId = new Map(state.items.map(i => [i.id, i]));
-    for (const i of roll) {
-      const f = byId.get(i.id);
-      const ok = !!(f && f.owner === cid && f.equipped);
-      toast.mark(i.id, ok);
-      if (!ok && !problems.some(p => p.startsWith(i.def.name + ":"))) problems.push(`${i.def.name} not equipped`);
-    }
-    if (roll.length && problems.length === 0) log("Weapons/armor verified.");
-    else if (problems.length) log("Not equipped: " + problems.join("; "));
-    if (sub) {
-      const sp = subErr ? [subErr] : verifySubclass(sub) || [];
-      toast.mark("subclass", !sp.length);
-      problems.push(...sp.map(p => "Subclass: " + p));
-    }
-  if (doMods) {
-    toast.phase("Applying mods");
-    try { await applyMods(state.roll.mods, cid); } catch (e) { problems.push("Mods: " + e.message); }
-    for (const plan of state.roll.mods) for (const pl of plan.placed) {
-      const ok = (plan.cur || [])[pl.idx] === pl.hash;
-      toast.mark("mod:" + plan.item.id + ":" + pl.idx, ok);
-      if (!ok) problems.push(`${pl.name} on ${plan.item.def.name}`);
-    }
-  }
-    state.roll.weapons = state.roll.weapons?.map(i => byId.get(i.id) || i) || null;
-    state.roll.armor = state.roll.armor?.map(i => byId.get(i.id) || i) || null;
-  } catch (e) {
-    problems.push(e.message);
-  }
-  toast.done(problems);
-  renderRoll();
-}
-
-/* ---------- UI wiring ---------- */
-const BUSY_IDS = ["btnRollArmorSub", "btnRollAll", "btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRefresh", "btnEquip", "charSelect"];
-function setBusy(b) {
-  for (const id of BUSY_IDS) $(id).disabled = b;
-  for (const el of document.querySelectorAll("[data-reroll]")) el.disabled = b;
-  if (!b) $("btnEquip").disabled = !((state.roll.weapons || []).length || (state.roll.armor || []).length || state.roll.subclass);
-}
-
-async function busy(fn) {
-  setBusy(true);
-  try { await fn(); }
-  catch (e) { log("Error: " + e.message); }
-  finally { setBusy(false); }
-}
-
-async function weaponElement(cid) {
-  if (!state.rules.mono) return 0;
-  if (state.roll.subclass && state.roll.subclass.charId === cid) return state.roll.subclass.element || 0;
-  return await equippedElement(cid);
-}
-
-/* Exotic first (equal odds among your eligible exotics that work with at least one subclass), then a subclass it works with. */
 async function pickSubclassAndExotic(cid, cls) {
   const infos = await getSubclassInfo(cid);
   const off = exoticOff("a");
@@ -2143,71 +1184,62 @@ async function doRoll({ subclass, weapons, armor }) {
 }
 
 function wire() {
-  $("btnSignIn").onclick = signIn;
-  $("btnSignOut").onclick = () => signOut(true);
   $("btnRollAll").onclick = () => busy(() => doRoll({ subclass: true, weapons: true, armor: true }));
   $("btnRollSubclass").onclick = () => busy(() => doRoll({ subclass: true }));
   $("btnRollWeapons").onclick = () => busy(() => doRoll({ weapons: true }));
   $("btnRollArmor").onclick = () => busy(() => doRoll({ armor: "only" }));
   $("btnRollArmorSub").onclick = () => busy(() => doRoll({ armor: true }));
-  $("btnRefresh").onclick = () => busy(async () => { await loadProfile(); populateChars(); renderExoticList("w"); renderExoticList("a"); renderRoll(); });
-  $("btnEquip").onclick = () => busy(equipRoll);
-  $("charSelect").onchange = () => {
-    const cid = selectedChar();
-    if (state.roll.subclass && state.roll.subclass.charId !== cid) state.roll.subclass = null;
-    if (state.roll.armor && state.roll.armorClass !== selectedClass()) { state.roll.armor = null; state.roll.mods = null; }
-    renderExoticList("a");
-    renderRoll();
-  };
-  $("btnCopy").onclick = async () => {
-    const v = $("dimString").value;
-    try { await navigator.clipboard.writeText(v); log("DIM search copied."); }
-    catch { $("dimString").select(); log("Clipboard blocked; text selected for manual copy."); }
-  };
-  if (state.rules.noDoubleSpecial && state.rules.guaranteedDoubleSpecial) state.rules.guaranteedDoubleSpecial = false;
-  for (const cb of document.querySelectorAll("[data-rule]")) {
-    cb.checked = !!state.rules[cb.dataset.rule];
-    cb.onchange = () => {
-      state.rules[cb.dataset.rule] = cb.checked;
-      const other = cb.dataset.excl && document.querySelector(`[data-rule="${cb.dataset.excl}"]`);
-      if (other && cb.checked) { other.checked = false; state.rules[cb.dataset.excl] = false; }
-      store.set("d2b_rules", state.rules);
-      if (state.defs) renderExoticList("w");
-    };
-  }
-  for (const b of document.querySelectorAll("[data-list]")) b.onclick = () => setExoticList(b.dataset.list, b.dataset.set);
+  wireCommon();
 }
 
-async function init() {
-  wire();
-  if (!CONFIG.apiKey || CONFIG.apiKey.startsWith("PASTE") || !CONFIG.clientId || CONFIG.clientId.startsWith("PASTE")) {
-    $("setup").hidden = false;
-    return;
+/* ---------- page hooks for core.js ---------- */
+PAGE.renderExtra = () => {
+  const mt = $("modTable"); mt.replaceChildren();
+  for (const plan of state.roll.mods || []) {
+    const tr = document.createElement("tr");
+    const a = document.createElement("td"); a.className = "label"; a.textContent = SLOT_NAME[plan.item.def.bucket];
+    const b = document.createElement("td"); b.className = "icons";
+    for (const p of plan.placed.slice().sort((x, y) => x.idx - y.idx)) {
+      const span = document.createElement("span");
+      span.style.marginRight = "14px";
+      span.style.whiteSpace = "nowrap";
+      if (plugDef(p.hash)?.i) { const img = document.createElement("img"); img.src = BUNGIE + plugDef(p.hash).i; img.alt = ""; span.append(img); }
+      span.append(document.createTextNode(p.name));
+      b.append(span);
+    }
+    if (plan.missing.length) {
+      const d = document.createElement("div");
+      d.className = "missing";
+      d.textContent = "Skipped: " + plan.missing.map(x => `${x.name} (${x.why})`).join("; ");
+      b.append(d);
+    }
+    tr.append(a, b);
+    mt.append(tr);
   }
-  try {
-    await handleRedirect();
-    const ret = store.get("d2r_return");
-    if (ret && state.token) { store.del("d2r_return"); location.replace(ret); return; }
-  } catch (e) { log("Error: " + e.message); }
-  const t = store.get("d2r_token");
-  if (!state.token && t && t.expires > Date.now()) state.token = t;
-  if (!state.token) { $("signin").hidden = false; return; }
-  $("app").hidden = false;
-  await busy(async () => {
-    await loadMembership();
-    await loadDefs();
-    await loadProfile();
-    log("Loading your synergy sheet…");
-    await loadSheet();
-    await loadSynergy();
-    populateChars();
-    renderExoticList("w");
-    renderExoticList("a");
-    renderRoll();
-  });
-}
+};
 
-init();
+/* Mods go on after weapons, armor and subclass. */
+PAGE.equipExtra = (cid, cls, toast) => {
+  if (!(state.rules.mods && state.roll.mods && state.roll.armorClass === cls)) return null;
+  toast.icons(state.roll.mods.flatMap(plan => plan.placed.map(pl => ({ key: "mod:" + plan.item.id + ":" + pl.idx, icon: plugDef(pl.hash)?.i, name: pl.name }))));
+  return async problems => {
+    toast.phase("Applying mods");
+    try { await applyMods(state.roll.mods, cid); } catch (e) { problems.push("Mods: " + e.message); }
+    for (const plan of state.roll.mods) for (const pl of plan.placed) {
+      const ok = (plan.cur || [])[pl.idx] === pl.hash;
+      toast.mark("mod:" + plan.item.id + ":" + pl.idx, ok);
+      if (!ok) problems.push(`${pl.name} on ${plan.item.def.name}`);
+    }
+  };
+};
+
+wire();
+init(async () => {
+  await loadTagData();
+  log("Loading your synergy sheet…");
+  await loadSheet();
+  await loadSynergy();
+});
 </script>
 </body>
 </html>
