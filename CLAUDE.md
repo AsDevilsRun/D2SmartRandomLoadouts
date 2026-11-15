@@ -1,0 +1,94 @@
+# D2 Smart Random Loadouts: notes for Claude
+
+Read this first in any new session on this repo. It records how the site works, the decisions already made, and how the owner likes to work. The data files themselves are documented in `data/README.md`.
+
+## Project
+
+A Destiny 2 loadout randomizer served by GitHub Pages straight from this repo (no build step).
+
+- `index.html`: pure random loadout. Every eligible name is equally likely. Each button rolls only its own section.
+- `build.html`: "Smart Build". Weighted by synergy tags and the owner's synergy rules, with balancing so subclasses, exotic weapons and abilities come out even over many rolls.
+- `core.js`: everything both pages share (Bungie API, sign-in, caches, inventory, subclass sockets, weapon rolling, equipping, rendering). Each page defines `PAGE` before loading it.
+- `data/*.csv`: all tags, tiers and synergy rules, read by `build.html` on every load. See `data/README.md`.
+- `tools/`: the roll simulation and the page tests (below). Not used by the site.
+
+Everything runs in the visitor's browser: HTML is layout, CSS is styling, all logic is JavaScript.
+
+## How the owner works
+
+- Discuss before starting anything that takes more than a few minutes. Don't start long work on your own initiative.
+- "Can you X?" is a question. Answer it; don't do X.
+- The owner commits by hand (GitHub web upload or vscode.dev). Claude has read access only. Deliver changed files as a zip that keeps the repo's folder layout, plus a one-line commit message. Don't push or ask for push access.
+- Before saying something is or isn't committed, check `origin` (`git fetch`), don't assume.
+- Don't rebuild the roll-rate dashboard unless asked; give numbers inline.
+- Serious mode: no filler, no offers, no soft closings.
+
+## core.js
+
+- `PAGE` hooks: `rulesKey`, `defaultRules`, `forcedRules`, `extraState`, `busyIds`, `returnTo`, `renderExtra`, `equipExtra`, `updateButtons`, `pickWeapon`, `weaponSearchOrder`.
+- Pages load `core.js?v=3`. Bump the number on both pages whenever `core.js` changes, or browsers may pair a new page with an old cached `core.js` for up to 10 minutes.
+- Weapon rolling (`rollWeapons`, `rerollWeaponSlot`) is shared. `build.html` plugs in weighted picks (`PAGE.pickWeapon`) and an optional weapon need (`{ test(item), label }`); `index.html` uses the defaults.
+- Sign-in: public OAuth client, so tokens last about an hour and can't be refreshed; a 401 shows the sign-in button. The API key in `CONFIG` is public by necessity and is Origin-restricted in the Bungie portal.
+- Caches: IndexedDB database `d2srl`, store `kv`: item definitions (`defs_<SLIM_VERSION>_<manifest>`), per-item lookups (`ent_…`), Collections sources (`src_…`), exotic weapon balance factors (`wbal<BALANCE_VERSION>_<class>_…`). localStorage: `d2r_token`, `d2r_rules` (index), `d2b_rules` (build), `d2r_off_w` / `d2r_off_a` (exotic lists).
+- Equipping verifies from each action's response (equipStatus 1 = success), not from a profile read, because Bungie's profile lags behind changes.
+
+## build.html
+
+- Tag weight = tier weight × (1 + points, capped at 6); ×3 for plugs the exotic armor mentions; capped at 10. Tiers: S 2.0, A 1.6, B 1.3, C 1.0, D 0.8, E 0.65, F 0.5, PvP 0.3 (`data/tiers.csv`).
+- Synergy rules come only from `data/exotic_synergy.csv`. DIM's exotic-synergy data was removed: an exotic without a row has no subclass or weapon restriction.
+- Only "Roll build" works until a full build exists for the selected character; the other roll buttons and per-weapon rerolls are disabled until then.
+- Three kinds of balancing:
+  - **Subclasses**: `balanceSubclassWeights`, calculated exactly on every roll from the owned exotic armor and the synergy rows. No simulation, nothing saved.
+  - **Exotic weapons**: `ensureWeaponBalance` simulates `BALANCE_BUILDS_PER_ARMOR` (20) builds per exotic armor piece, fits one factor per exotic weapon so every exotic is equally likely within a class (counting every exotic in the game as owned), and saves the factors in IndexedDB until the data files, rules, exotic armor list or inventory change. 20 builds per piece leaves some noise (per-class range about 0.55–0.9% against 0.7% even), and the same skew repeats for that browser until the factors are recalculated.
+  - **Abilities** (super, grenade, melee, class ability, jump): `ensureAbilityBalance`, worked out directly per subclass socket; only a synergy row's forced picks are sampled (`ABILITY_RULE_SAMPLES`, 40). Kept in memory. Balanced within each subclass, so a subclass with one super (Strand Hunter: Silkstrike) shows that super whenever the subclass rolls.
+- Picks a synergy row requires (Golden Gun for Celestial Nighthawk, Still Hunt, Thorn/Osteo Striga) happen before weighting, so they can sit above an even share.
+- `orWeaponReady` remembers its answer per rule until the inventory, exotic weapon list or the unowned-exotics / guaranteed-double-special settings change.
+
+## Decisions already made
+
+- Kinetic slot never rolls Arc, Solar or Void weapons.
+- Celestial Nighthawk: Or weapon share 20%, Weapon chance 25% (Still Hunt). The owner is fine with Hunter getting Still Hunt somewhat more than even.
+- Necrotic Grip: Weapon chance 50% for Thorn and Osteo Striga. The old 4× soft boost doesn't apply to rows with a Weapon chance.
+- Oathkeeper excludes crossbows (Opaque Hourglass, A Good Shout, Submersion, Heirloom), which the game types as Combat Bow.
+- Wolfsbane counts as a sword for Stronghold.
+- Exotic weapon balancing: equal within each class, all exotics counted as owned, forced picks balanced too, factors stratified by exotic armor piece.
+- Subclass plug tags (`data/subclass_plugs.csv`), cleaned up in commit ea58140:
+  - Jumps have no tags.
+  - Supers carry no "super", "resist" or "airborne" tag; no grenade, melee or class ability carries its own slot's tag. "super", "grenade", "melee" and "class" stay on aspects, fragments and exotic armor, where they mean something.
+  - Rejected: volatile/freeze/shatter/tangle on Feed the Void; crystal/shatter on Consecration; invis on Weavewalk.
+- Declined: a slot-and-ammo correction in weapon balancing; an exotic-share column to make Triton Vice pick exotic glaives less often.
+- `index.html`: the "Randomize subclass in Roll all" setting was removed; Roll all always rolls the subclass. Rolling the subclass no longer rerolls weapons that clash with Monochromatic.
+
+## Open items
+
+- **90-day sign-in** (planned, not started): switch the Bungie app to a confidential client (gets a client secret and refresh tokens; Bungie's docs give `refresh_expires_in` 7776000 s = 90 days), hold the secret in a small Cloudflare Worker that does the code exchange and refreshes, and change `handleRedirect`, token storage and the 401 path in `core.js`. Set up the Worker first, then switch the app type and commit the site change together. Unverified: whether Bungie issues a new refresh token on each refresh (if not, sign-in lasts 90 days from first sign-in), and whether the current public flow stops working the moment the app becomes confidential.
+- Saved exotic weapon factors don't recalculate when the player unlocks a new aspect or fragment; ability factors recalculate on any weapon inventory change (cheap).
+- Visitor counts: GitHub Pages has none; would need something like GoatCounter or Cloudflare Web Analytics.
+
+## tools/
+
+### Roll simulation
+
+```
+python3 tools/sim/simulate.py [presses] [output folder]
+```
+
+Defaults: 60,000 presses (split evenly across classes) and `tools/sim/out/` (ignored by git). Takes about 20 s per 50,000 presses. It reads `data/*.csv` and writes `subclasses.csv`, `exotic_armor.csv`, `exotic_weapons.csv`, `aspects.csv`, `fragments.csv` and `abilities.csv` (percent of that class's or class-and-subclass's rolls).
+
+It mirrors build.html's "Roll build" with every exotic and subclass item owned: subclass balancing, synergy rules (incl. Or weapon share and Weapon chance), ability balancing, aspect/fragment tag weighting and stratified exotic weapon balancing. Legendary weapons are stand-ins (5 per weapon type). If you change the rolling or balancing code in `build.html`, change the simulation to match.
+
+`tools/sim/inputs/` holds game data the CSVs don't: aspects per subclass and abilities per subclass slot (Destiny Data Compendium; jumps and Prismatic supers from the owner), ability elements, fragment slots per aspect (Destiny 2: Endgame Analysis), exotic weapon type/ammo/slot, and exotic weapon tier letters. Update these when the game adds abilities, aspects or exotic weapons.
+
+### Page tests
+
+```
+cd tools/tests && npm install && npm test
+```
+
+jsdom loads the real pages with a mocked Bungie API and fake IndexedDB. The suites cover booting and definition caching, weapon rules and the complete weapon search, Postmaster pulls, equip verification and refused equips, sign-in expiry, rule storage, section-only rolls on index.html, partial-roll gating, weapon type matching, tag/CSV loading (`tag-data.test.js` also compares with the original baked-in data at commit ae8056e), Or weapon share, Weapon chance, weapon and ability balancing, partial-roll gating, and the caches. The weapon-balance and ability-balance suites check rates, so they're statistical; rerun once before treating a single failure as real. Run them after any change to the pages or `core.js`.
+
+## Artifacts outside the repo
+
+- Roll-rate dashboard ("Smart Build roll rates"): https://claude.ai/artifact/1NuW7kXsBh6xxamSYuEmYm (artifact slug 030ef984-b5b4-4fab-99e2-8d1bc8dce84a). Its six datasets are the simulation's six output CSVs, uploaded as assets. Last updated from commit ea58140's data.
+- "Ability pick rates: data sources" sheet: https://claude.ai/artifact/X7RwPpnv9YkY8aMtBQXGwR. Its Class abilities row ("partly inferred") is out of date; class abilities now come from the Compendium.
+- Reference spreadsheets the owner shared: Destiny Data Compendium and Destiny 2: Endgame Analysis (source of most tags and tiers).

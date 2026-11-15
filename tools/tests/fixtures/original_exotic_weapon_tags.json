@@ -1,0 +1,463 @@
+{
+ "exw": {
+  "Ace of Spades": [],
+  "Ager's Scepter": [
+   "slow",
+   "super"
+  ],
+  "Alethonym": [],
+  "Arbalest": [],
+  "Bad Juju": [
+   "super"
+  ],
+  "Barrow-Dyad": [],
+  "Bastion": [
+   "melee"
+  ],
+  "Cerberus +1": [
+   "crystal"
+  ],
+  "The Chaperone": [],
+  "Conditional Finality": [
+   "freeze",
+   "heal",
+   "ignition"
+  ],
+  "Crimson": [
+   "heal"
+  ],
+  "Cryosthesia 77K": [
+   "freeze",
+   "slow"
+  ],
+  "Cull's Shadow": [
+   "crystal",
+   "melee",
+   "resist"
+  ],
+  "Dead Man's Tale": [],
+  "Euphony": [
+   "threadling"
+  ],
+  "Final Warning": [
+   "slow",
+   "unravel"
+  ],
+  "Forerunner": [
+   "grenade",
+   "slow"
+  ],
+  "Hawkmoon": [],
+  "Huckleberry": [],
+  "Izanagi's Burden": [
+   "slow"
+  ],
+  "The Jade Rabbit": [],
+  "Khvostov 7G-0X": [
+   "orb"
+  ],
+  "The Last Word": [],
+  "Lumina": [],
+  "Malfeasance": [],
+  "MIDA Multi-Tool": [],
+  "Monte Carlo": [
+   "melee"
+  ],
+  "Necrochasm": [],
+  "New Land Beyond": [
+   "slow"
+  ],
+  "New Malpais": [
+   "suspend",
+   "unravel"
+  ],
+  "No Time to Explain": [],
+  "Osteo Striga": [
+   "slow"
+  ],
+  "Outbreak Perfected": [],
+  "Praxic Blade": [
+   "bolt",
+   "crystal",
+   "heal",
+   "melee",
+   "resist"
+  ],
+  "Quicksilver Storm": [
+   "grenade",
+   "tangle"
+  ],
+  "Rat King": [
+   "heal",
+   "invis"
+  ],
+  "Revision Zero": [],
+  "Sturm": [],
+  "SUROS Regime": [
+   "heal"
+  ],
+  "Sweet Business": [],
+  "The Navigator": [
+   "heal",
+   "resist",
+   "sever",
+   "tangle",
+   "wovenmail"
+  ],
+  "Thorn": [
+   "airborne",
+   "devour"
+  ],
+  "Touch of Malice": [
+   "blind",
+   "heal",
+   "resist",
+   "slow"
+  ],
+  "Traveler's Chosen": [
+   "class",
+   "grenade",
+   "melee"
+  ],
+  "Verglas Curve": [
+   "crystal",
+   "freeze",
+   "slow"
+  ],
+  "Vigilance Wing": [
+   "heal"
+  ],
+  "Wicked Implement": [
+   "crystal",
+   "shard",
+   "shatter",
+   "slow"
+  ],
+  "Wish-Ender": [],
+  "Wish-Keeper": [
+   "suspend"
+  ],
+  "Witherhoard": [],
+  "Borealis": [
+   "super"
+  ],
+  "Buried Bloodline": [
+   "devour",
+   "weaken"
+  ],
+  "Centrifuse": [
+   "amplified",
+   "blind"
+  ],
+  "Choir of One": [
+   "slow"
+  ],
+  "Cloudstrike": [
+   "bolt",
+   "sever"
+  ],
+  "Coldheart": [
+   "ionic",
+   "slow"
+  ],
+  "Collective Obligation": [
+   "devour",
+   "suppress",
+   "volatile",
+   "weaken"
+  ],
+  "Dead Messenger": [],
+  "Delicate Tomb": [
+   "ionic",
+   "jolt"
+  ],
+  "Devil's Ruin": [
+   "firesprite",
+   "ignition",
+   "scorch",
+   "suspend"
+  ],
+  "Divinity": [
+   "jolt",
+   "weaken"
+  ],
+  "Duality": [],
+  "Edge of Action": [
+   "melee",
+   "overshield",
+   "resist",
+   "suppress"
+  ],
+  "Edge of Concurrence": [
+   "jolt",
+   "melee"
+  ],
+  "Edge of Intent": [
+   "heal",
+   "melee"
+  ],
+  "Ergo Sum": [
+   "grenade"
+  ],
+  "Eriana's Vow": [
+   "ignition",
+   "super"
+  ],
+  "Ex Diris": [
+   "amplified",
+   "blind",
+   "heal",
+   "overshield",
+   "resist"
+  ],
+  "Fighting Lion": [
+   "grenade",
+   "volatile"
+  ],
+  "Graviton Lance": [
+   "orb"
+  ],
+  "Graviton Spike": [
+   "crystal",
+   "transcend"
+  ],
+  "Hard Light": [],
+  "Heirloom": [
+   "scorch"
+  ],
+  "Hierarchy of Needs": [
+   "scorch",
+   "super",
+   "unravel",
+   "volatile"
+  ],
+  "Ice Breaker": [
+   "crystal",
+   "freeze",
+   "ignition",
+   "shatter"
+  ],
+  "Jötunn": [
+   "scorch"
+  ],
+  "Le Monarque": [],
+  "Lodestar": [
+   "amplified",
+   "blind",
+   "jolt"
+  ],
+  "Lord of Wolves": [
+   "scorch"
+  ],
+  "Lorentz Driver": [],
+  "Merciless": [
+   "heal"
+  ],
+  "Polaris Lance": [
+   "scorch"
+  ],
+  "Prometheus Lens": [
+   "scorch"
+  ],
+  "Red Death Reformed": [
+   "heal",
+   "orb"
+  ],
+  "Riskrunner": [
+   "resist"
+  ],
+  "Ruinous Effigy": [
+   "airborne",
+   "melee",
+   "resist",
+   "suppress",
+   "volatile"
+  ],
+  "Skyburner's Oath": [
+   "scorch"
+  ],
+  "Slayer's Fang": [
+   "breach",
+   "weaken"
+  ],
+  "Still Hunt": [
+   "orb",
+   "super",
+   "suppress"
+  ],
+  "Sunshot": [
+   "scorch"
+  ],
+  "Symmetry": [
+   "bolt",
+   "class"
+  ],
+  "Tarrabah": [
+   "resist",
+   "scorch"
+  ],
+  "Telesto": [],
+  "Tessellation": [
+   "blind",
+   "grenade",
+   "scorch",
+   "sever",
+   "slow",
+   "transcend",
+   "weaken"
+  ],
+  "The Fourth Horseman": [],
+  "The Manticore": [
+   "airborne",
+   "overshield",
+   "resist"
+  ],
+  "Third Iteration": [
+   "invis",
+   "weaken"
+  ],
+  "Ticuu's Divination": [],
+  "Tommy's Matchbook": [
+   "heal",
+   "ignition",
+   "overshield",
+   "resist",
+   "scorch"
+  ],
+  "Trespasser": [],
+  "Trinity Ghoul": [],
+  "Turncoat": [
+   "overshield",
+   "resist",
+   "weaken"
+  ],
+  "Wavesplitter": [
+   "orb",
+   "suppress"
+  ],
+  "Vex Mythoclast": [
+   "ignition"
+  ],
+  "Vexcalibur": [
+   "heal",
+   "melee",
+   "overshield",
+   "resist"
+  ],
+  "Anarchy": [
+   "amplified",
+   "jolt"
+  ],
+  "Black Talon": [
+   "suppress"
+  ],
+  "D.A.R.C.I.": [
+   "heal",
+   "jolt"
+  ],
+  "Deathbringer": [
+   "airborne",
+   "orb",
+   "slow"
+  ],
+  "Deterministic Chaos": [
+   "volatile",
+   "weaken"
+  ],
+  "Dragon's Breath": [
+   "firesprite",
+   "ignition",
+   "scorch"
+  ],
+  "Eyes of Tomorrow": [],
+  "Fafnir": [
+   "weaken"
+  ],
+  "Finality's Auger": [],
+  "Gjallarhorn": [],
+  "Grand Overture": [
+   "blind",
+   "slow"
+  ],
+  "Heartshadow": [
+   "invis",
+   "orb",
+   "weaken"
+  ],
+  "Heir Apparent": [
+   "resist"
+  ],
+  "Legend of Acrius": [],
+  "Leviathan's Breath": [
+   "volatile"
+  ],
+  "Microcosm": [
+   "super"
+  ],
+  "One Thousand Voices": [
+   "scorch"
+  ],
+  "Salvation's Grip": [
+   "crystal",
+   "freeze",
+   "grenade",
+   "shatter"
+  ],
+  "Service of Luzaku": [
+   "heal",
+   "tangle",
+   "threadling"
+  ],
+  "Sleeper Simulant": [],
+  "Parasite": [],
+  "The Colony": [
+   "grenade"
+  ],
+  "The Lament": [
+   "scorch"
+  ],
+  "The Prospector": [
+   "grenade"
+  ],
+  "The Queenbreaker": [
+   "blind",
+   "grenade",
+   "melee",
+   "super"
+  ],
+  "The Wardcliff Coil": [
+   "bolt"
+  ],
+  "Thunderlord": [
+   "bolt"
+  ],
+  "Tractor Cannon": [
+   "suppress",
+   "weaken"
+  ],
+  "Truth": [],
+  "Two-Tailed Fox": [
+   "jolt",
+   "scorch",
+   "suppress"
+  ],
+  "Whirling Ovation": [
+   "grenade"
+  ],
+  "Whisper of the Worm": [],
+  "Winterbite": [
+   "freeze",
+   "melee",
+   "orb",
+   "slow"
+  ],
+  "Wolfsbane": [
+   "airborne",
+   "melee",
+   "orb",
+   "resist"
+  ],
+  "Worldline Zero": [],
+  "Xenophage": []
+ }
+}

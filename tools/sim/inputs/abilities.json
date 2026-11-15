@@ -1,0 +1,521 @@
+{
+ "Hunter": {
+  "arc": {
+   "super": [
+    "Arc Staff",
+    "Gathering Storm",
+    "Storm's Edge"
+   ],
+   "grenade": [
+    "Arcbolt Grenade",
+    "Flashbang Grenade",
+    "Flux Grenade",
+    "Lightning Grenade",
+    "Pulse Grenade",
+    "Skip Grenade",
+    "Storm Grenade"
+   ],
+   "melee": [
+    "Combination Blow",
+    "Disorienting Blow"
+   ],
+   "class": [
+    "Gambler's Dodge",
+    "Marksman's Dodge"
+   ],
+   "movement": [
+    "Strafe Jump",
+    "Triple Jump",
+    "High Jump",
+    "Blink"
+   ]
+  },
+  "solar": {
+   "super": [
+    "Blade Barrage",
+    "Golden Gun: Deadshot",
+    "Golden Gun: Marksman"
+   ],
+   "grenade": [
+    "Firebolt Grenade",
+    "Fusion Grenade",
+    "Healing Grenade",
+    "Incendiary Grenade",
+    "Solar Grenade",
+    "Swarm Grenade",
+    "Thermite Grenade",
+    "Tripmine Grenade"
+   ],
+   "melee": [
+    "Knife Trick",
+    "Lightweight Knife",
+    "Proximity Explosive Knife",
+    "Weighted Throwing Knife"
+   ],
+   "class": [
+    "Gambler's Dodge",
+    "Marksman's Dodge",
+    "Acrobat's Dodge"
+   ],
+   "movement": [
+    "Strafe Jump",
+    "Triple Jump",
+    "High Jump"
+   ]
+  },
+  "void": {
+   "super": [
+    "Spectral Blades",
+    "Shadowshot: Deadfall",
+    "Shadowshot: Moebius Quiver"
+   ],
+   "grenade": [
+    "Axion Bolt",
+    "Handheld Supernova",
+    "Magnetic Grenade",
+    "Scatter Grenade",
+    "Suppressor Grenade",
+    "Void Spike",
+    "Void Wall",
+    "Vortex Grenade"
+   ],
+   "melee": [
+    "Phantom Surge",
+    "Snare Bomb"
+   ],
+   "class": [
+    "Gambler's Dodge",
+    "Marksman's Dodge"
+   ],
+   "movement": [
+    "Strafe Jump",
+    "Triple Jump",
+    "High Jump"
+   ]
+  },
+  "stasis": {
+   "super": [
+    "Silence and Squall"
+   ],
+   "grenade": [
+    "Coldsnap Grenade",
+    "Duskfield Grenade",
+    "Glacier Grenade",
+    "Shatter Grenade"
+   ],
+   "melee": [
+    "Withering Blade"
+   ],
+   "class": [
+    "Gambler's Dodge",
+    "Marksman's Dodge"
+   ],
+   "movement": [
+    "Strafe Jump",
+    "Triple Jump",
+    "High Jump"
+   ]
+  },
+  "strand": {
+   "super": [
+    "Silkstrike"
+   ],
+   "grenade": [
+    "Grapple",
+    "Shackle Grenade",
+    "Slicewire",
+    "Threadling Grenade"
+   ],
+   "melee": [
+    "Threaded Spike"
+   ],
+   "class": [
+    "Gambler's Dodge",
+    "Marksman's Dodge"
+   ],
+   "movement": [
+    "Strafe Jump",
+    "Triple Jump",
+    "High Jump"
+   ]
+  },
+  "prismatic": {
+   "super": [
+    "Storm's Edge",
+    "Shadowshot: Deadfall",
+    "Golden Gun: Marksman",
+    "Silence and Squall",
+    "Silkstrike"
+   ],
+   "grenade": [
+    "Hailfire Spike",
+    "Arcbolt Grenade",
+    "Swarm Grenade",
+    "Magnetic Grenade",
+    "Duskfield Grenade",
+    "Grapple"
+   ],
+   "melee": [
+    "Combination Blow",
+    "Knife Trick",
+    "Snare Bomb",
+    "Withering Blade",
+    "Threaded Spike"
+   ],
+   "class": [
+    "Acrobat's Dodge",
+    "Gambler's Dodge",
+    "Marksman's Dodge"
+   ],
+   "movement": [
+    "Strafe Jump",
+    "Triple Jump",
+    "High Jump",
+    "Blink"
+   ]
+  }
+ },
+ "Titan": {
+  "arc": {
+   "super": [
+    "Fists of Havoc",
+    "Thundercrash"
+   ],
+   "grenade": [
+    "Arcbolt Grenade",
+    "Flashbang Grenade",
+    "Flux Grenade",
+    "Lightning Grenade",
+    "Pulse Grenade",
+    "Skip Grenade",
+    "Storm Grenade"
+   ],
+   "melee": [
+    "Ballistic Slam",
+    "Seismic Strike",
+    "Thunderclap"
+   ],
+   "class": [
+    "Rally Barricade",
+    "Towering Barricade",
+    "Thruster"
+   ],
+   "movement": [
+    "Catapult Lift",
+    "High Lift",
+    "Strafe Lift"
+   ]
+  },
+  "solar": {
+   "super": [
+    "Burning Maul",
+    "Hammer of Sol"
+   ],
+   "grenade": [
+    "Firebolt Grenade",
+    "Fusion Grenade",
+    "Healing Grenade",
+    "Incendiary Grenade",
+    "Solar Grenade",
+    "Swarm Grenade",
+    "Thermite Grenade",
+    "Tripmine Grenade"
+   ],
+   "melee": [
+    "Hammer Strike",
+    "Throwing Hammer"
+   ],
+   "class": [
+    "Rally Barricade",
+    "Towering Barricade"
+   ],
+   "movement": [
+    "Catapult Lift",
+    "High Lift",
+    "Strafe Lift"
+   ]
+  },
+  "void": {
+   "super": [
+    "Sentinel Shield",
+    "Twilight Arsenal",
+    "Ward of Dawn"
+   ],
+   "grenade": [
+    "Axion Bolt",
+    "Handheld Supernova",
+    "Magnetic Grenade",
+    "Scatter Grenade",
+    "Suppressor Grenade",
+    "Void Spike",
+    "Void Wall",
+    "Vortex Grenade"
+   ],
+   "melee": [
+    "Shield Bash",
+    "Shield Throw"
+   ],
+   "class": [
+    "Rally Barricade",
+    "Towering Barricade"
+   ],
+   "movement": [
+    "Catapult Lift",
+    "High Lift",
+    "Strafe Lift"
+   ]
+  },
+  "stasis": {
+   "super": [
+    "Glacial Quake"
+   ],
+   "grenade": [
+    "Coldsnap Grenade",
+    "Duskfield Grenade",
+    "Glacier Grenade",
+    "Shatter Grenade"
+   ],
+   "melee": [
+    "Shiver Strike"
+   ],
+   "class": [
+    "Rally Barricade",
+    "Towering Barricade"
+   ],
+   "movement": [
+    "Catapult Lift",
+    "High Lift",
+    "Strafe Lift"
+   ]
+  },
+  "strand": {
+   "super": [
+    "Bladefury"
+   ],
+   "grenade": [
+    "Grapple",
+    "Shackle Grenade",
+    "Slicewire",
+    "Threadling Grenade"
+   ],
+   "melee": [
+    "Frenzied Blade"
+   ],
+   "class": [
+    "Rally Barricade",
+    "Towering Barricade"
+   ],
+   "movement": [
+    "Catapult Lift",
+    "High Lift",
+    "Strafe Lift"
+   ]
+  },
+  "prismatic": {
+   "super": [
+    "Thundercrash",
+    "Twilight Arsenal",
+    "Hammer of Sol",
+    "Glacial Quake",
+    "Bladefury"
+   ],
+   "grenade": [
+    "Electrified Snare",
+    "Pulse Grenade",
+    "Thermite Grenade",
+    "Suppressor Grenade",
+    "Glacier Grenade",
+    "Shackle Grenade"
+   ],
+   "melee": [
+    "Thunderclap",
+    "Hammer Strike",
+    "Shield Throw",
+    "Shiver Strike",
+    "Frenzied Blade"
+   ],
+   "class": [
+    "Rally Barricade",
+    "Thruster",
+    "Towering Barricade"
+   ],
+   "movement": [
+    "Catapult Lift",
+    "High Lift",
+    "Strafe Lift"
+   ]
+  }
+ },
+ "Warlock": {
+  "arc": {
+   "super": [
+    "Chaos Reach",
+    "Stormtrance"
+   ],
+   "grenade": [
+    "Arcbolt Grenade",
+    "Flashbang Grenade",
+    "Flux Grenade",
+    "Lightning Grenade",
+    "Pulse Grenade",
+    "Skip Grenade",
+    "Storm Grenade"
+   ],
+   "melee": [
+    "Ball Lightning",
+    "Chain Lightning"
+   ],
+   "class": [
+    "Healing Rift",
+    "Empowering Rift"
+   ],
+   "movement": [
+    "Burst Glide",
+    "Balanced Glide",
+    "Strafe Glide"
+   ]
+  },
+  "solar": {
+   "super": [
+    "Song of Flame",
+    "Daybreak",
+    "Well of Radiance"
+   ],
+   "grenade": [
+    "Firebolt Grenade",
+    "Fusion Grenade",
+    "Healing Grenade",
+    "Incendiary Grenade",
+    "Solar Grenade",
+    "Swarm Grenade",
+    "Thermite Grenade",
+    "Tripmine Grenade"
+   ],
+   "melee": [
+    "Celestial Fire",
+    "Incinerator Snap"
+   ],
+   "class": [
+    "Healing Rift",
+    "Empowering Rift",
+    "Phoenix Dive"
+   ],
+   "movement": [
+    "Burst Glide",
+    "Balanced Glide",
+    "Strafe Glide"
+   ]
+  },
+  "void": {
+   "super": [
+    "Nova Bomb: Cataclysm",
+    "Nova Bomb: Vortex",
+    "Nova Warp"
+   ],
+   "grenade": [
+    "Axion Bolt",
+    "Handheld Supernova",
+    "Magnetic Grenade",
+    "Scatter Grenade",
+    "Suppressor Grenade",
+    "Void Spike",
+    "Void Wall",
+    "Vortex Grenade"
+   ],
+   "melee": [
+    "Pocket Singularity"
+   ],
+   "class": [
+    "Healing Rift",
+    "Empowering Rift"
+   ],
+   "movement": [
+    "Burst Glide",
+    "Balanced Glide",
+    "Strafe Glide",
+    "Blink"
+   ]
+  },
+  "stasis": {
+   "super": [
+    "Winter's Wrath"
+   ],
+   "grenade": [
+    "Coldsnap Grenade",
+    "Duskfield Grenade",
+    "Glacier Grenade",
+    "Shatter Grenade"
+   ],
+   "melee": [
+    "Penumbral Blast"
+   ],
+   "class": [
+    "Healing Rift",
+    "Empowering Rift"
+   ],
+   "movement": [
+    "Burst Glide",
+    "Balanced Glide",
+    "Strafe Glide"
+   ]
+  },
+  "strand": {
+   "super": [
+    "Needlestorm"
+   ],
+   "grenade": [
+    "Grapple",
+    "Shackle Grenade",
+    "Slicewire",
+    "Threadling Grenade"
+   ],
+   "melee": [
+    "Arcane Needle"
+   ],
+   "class": [
+    "Healing Rift",
+    "Empowering Rift"
+   ],
+   "movement": [
+    "Burst Glide",
+    "Balanced Glide",
+    "Strafe Glide"
+   ]
+  },
+  "prismatic": {
+   "super": [
+    "Song of Flame",
+    "Nova Bomb: Cataclysm",
+    "Stormtrance",
+    "Winter's Wrath",
+    "Needlestorm"
+   ],
+   "grenade": [
+    "Freezing Singularity",
+    "Storm Grenade",
+    "Healing Grenade",
+    "Vortex Grenade",
+    "Coldsnap Grenade",
+    "Threadling Grenade"
+   ],
+   "melee": [
+    "Chain Lightning",
+    "Incinerator Snap",
+    "Pocket Singularity",
+    "Penumbral Blast",
+    "Arcane Needle"
+   ],
+   "class": [
+    "Empowering Rift",
+    "Healing Rift",
+    "Phoenix Dive"
+   ],
+   "movement": [
+    "Burst Glide",
+    "Balanced Glide",
+    "Strafe Glide",
+    "Blink"
+   ]
+  }
+ }
+}

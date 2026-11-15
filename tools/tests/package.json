@@ -1,0 +1,12 @@
+{
+  "name": "d2srl-tests",
+  "private": true,
+  "description": "Page tests for index.html and build.html (jsdom with a mocked Bungie API). See CLAUDE.md.",
+  "scripts": {
+    "test": "for f in *.test.js; do echo \"== $f\"; node \"$f\" | grep -E '^(PASS|FAIL|OK|ALL PASSED)' || exit 1; done"
+  },
+  "dependencies": {
+    "fake-indexeddb": "^6.2.8",
+    "jsdom": "^24.1.3"
+  }
+}

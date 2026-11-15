@@ -1,0 +1,848 @@
+{
+ "Ace of Spades": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Ager's Scepter": {
+  "type": "Trace Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Stasis"
+ },
+ "Alethonym": {
+  "type": "Grenade Launcher",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Stasis"
+ },
+ "Arbalest": {
+  "type": "Linear Fusion Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Bad Juju": {
+  "type": "Pulse Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Barrow-Dyad": {
+  "type": "Submachine Gun",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Strand"
+ },
+ "Bastion": {
+  "type": "Fusion Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Cerberus +1": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "The Chaperone": {
+  "type": "Shotgun",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Conditional Finality": {
+  "type": "Shotgun",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Crimson": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Cryosthesia 77K": {
+  "type": "Sidearm",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Stasis"
+ },
+ "Cull's Shadow": {
+  "type": "Fusion Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Dead Man's Tale": {
+  "type": "Scout Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Euphony": {
+  "type": "Linear Fusion Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Strand"
+ },
+ "Final Warning": {
+  "type": "Sidearm",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Strand"
+ },
+ "Forerunner": {
+  "type": "Sidearm",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Hawkmoon": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Huckleberry": {
+  "type": "Submachine Gun",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Izanagi's Burden": {
+  "type": "Sniper Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "The Jade Rabbit": {
+  "type": "Scout Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Khvostov 7G-0X": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "The Last Word": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Lumina": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Malfeasance": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "MIDA Multi-Tool": {
+  "type": "Scout Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Monte Carlo": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Necrochasm": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "New Land Beyond": {
+  "type": "Sniper Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "New Malpais": {
+  "type": "Pulse Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Strand"
+ },
+ "No Time to Explain": {
+  "type": "Pulse Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Osteo Striga": {
+  "type": "Submachine Gun",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Outbreak Perfected": {
+  "type": "Pulse Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Praxic Blade": {
+  "type": "Sword",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": ""
+ },
+ "Quicksilver Storm": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Rat King": {
+  "type": "Sidearm",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Revision Zero": {
+  "type": "Pulse Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Sturm": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "SUROS Regime": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Sweet Business": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "The Navigator": {
+  "type": "Trace Rifle",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Strand"
+ },
+ "Thorn": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Touch of Malice": {
+  "type": "Scout Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Traveler's Chosen": {
+  "type": "Sidearm",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Verglas Curve": {
+  "type": "Combat Bow",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Stasis"
+ },
+ "Vigilance Wing": {
+  "type": "Pulse Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Wicked Implement": {
+  "type": "Scout Rifle",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Stasis"
+ },
+ "Wish-Ender": {
+  "type": "Combat Bow",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Wish-Keeper": {
+  "type": "Combat Bow",
+  "ammo": "primary",
+  "bucket": "kinetic",
+  "el": "Strand"
+ },
+ "Witherhoard": {
+  "type": "Grenade Launcher",
+  "ammo": "special",
+  "bucket": "kinetic",
+  "el": "Kinetic"
+ },
+ "Borealis": {
+  "type": "Sniper Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": ""
+ },
+ "Buried Bloodline": {
+  "type": "Sidearm",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Centrifuse": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Choir of One": {
+  "type": "Auto Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Cloudstrike": {
+  "type": "Sniper Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Coldheart": {
+  "type": "Trace Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Collective Obligation": {
+  "type": "Pulse Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Dead Messenger": {
+  "type": "Grenade Launcher",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": ""
+ },
+ "Delicate Tomb": {
+  "type": "Fusion Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Devil's Ruin": {
+  "type": "Sidearm",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Divinity": {
+  "type": "Trace Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Duality": {
+  "type": "Shotgun",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Edge of Action": {
+  "type": "Glaive",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Edge of Concurrence": {
+  "type": "Glaive",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Edge of Intent": {
+  "type": "Glaive",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Ergo Sum": {
+  "type": "Sword",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": ""
+ },
+ "Eriana's Vow": {
+  "type": "Hand Cannon",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Ex Diris": {
+  "type": "Grenade Launcher",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Fighting Lion": {
+  "type": "Grenade Launcher",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Graviton Lance": {
+  "type": "Pulse Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Graviton Spike": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Hard Light": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": ""
+ },
+ "Heirloom": {
+  "type": "Combat Bow",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Hierarchy of Needs": {
+  "type": "Combat Bow",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Ice Breaker": {
+  "type": "Sniper Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Jötunn": {
+  "type": "Fusion Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Le Monarque": {
+  "type": "Combat Bow",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Lodestar": {
+  "type": "Trace Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Lord of Wolves": {
+  "type": "Shotgun",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Lorentz Driver": {
+  "type": "Linear Fusion Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Merciless": {
+  "type": "Fusion Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Polaris Lance": {
+  "type": "Scout Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Prometheus Lens": {
+  "type": "Trace Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Red Death Reformed": {
+  "type": "Pulse Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Riskrunner": {
+  "type": "Submachine Gun",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Ruinous Effigy": {
+  "type": "Trace Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Skyburner's Oath": {
+  "type": "Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Slayer's Fang": {
+  "type": "Shotgun",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Still Hunt": {
+  "type": "Sniper Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Sunshot": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Symmetry": {
+  "type": "Scout Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Tarrabah": {
+  "type": "Submachine Gun",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Telesto": {
+  "type": "Fusion Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Tessellation": {
+  "type": "Fusion Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Matching"
+ },
+ "The Fourth Horseman": {
+  "type": "Shotgun",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "The Manticore": {
+  "type": "Submachine Gun",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Third Iteration": {
+  "type": "Scout Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Ticuu's Divination": {
+  "type": "Combat Bow",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Tommy's Matchbook": {
+  "type": "Auto Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Trespasser": {
+  "type": "Sidearm",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Trinity Ghoul": {
+  "type": "Combat Bow",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Arc"
+ },
+ "Turncoat": {
+  "type": "Hand Cannon",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Wavesplitter": {
+  "type": "Trace Rifle",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Vex Mythoclast": {
+  "type": "Fusion Rifle",
+  "ammo": "primary",
+  "bucket": "energy",
+  "el": "Solar"
+ },
+ "Vexcalibur": {
+  "type": "Glaive",
+  "ammo": "special",
+  "bucket": "energy",
+  "el": "Void"
+ },
+ "Anarchy": {
+  "type": "Grenade Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "Black Talon": {
+  "type": "Sword",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "D.A.R.C.I.": {
+  "type": "Sniper Rifle",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "Deathbringer": {
+  "type": "Rocket Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "Deterministic Chaos": {
+  "type": "Machine Gun",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "Dragon's Breath": {
+  "type": "Rocket Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Eyes of Tomorrow": {
+  "type": "Rocket Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Fafnir": {
+  "type": "Linear Fusion Rifle",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "Finality's Auger": {
+  "type": "Linear Fusion Rifle",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Gjallarhorn": {
+  "type": "Rocket Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Grand Overture": {
+  "type": "",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "Heartshadow": {
+  "type": "Sword",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "Heir Apparent": {
+  "type": "Machine Gun",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Legend of Acrius": {
+  "type": "Shotgun",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "Leviathan's Breath": {
+  "type": "Combat Bow",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "Microcosm": {
+  "type": "Trace Rifle",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Kinetic"
+ },
+ "One Thousand Voices": {
+  "type": "Fusion Rifle",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Salvation's Grip": {
+  "type": "Grenade Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Stasis"
+ },
+ "Service of Luzaku": {
+  "type": "Machine Gun",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Strand"
+ },
+ "Sleeper Simulant": {
+  "type": "Linear Fusion Rifle",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Parasite": {
+  "type": "",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "The Colony": {
+  "type": "Grenade Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "The Lament": {
+  "type": "Sword",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "The Prospector": {
+  "type": "Grenade Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "The Queenbreaker": {
+  "type": "Linear Fusion Rifle",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "The Wardcliff Coil": {
+  "type": "Rocket Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "Thunderlord": {
+  "type": "Machine Gun",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "Tractor Cannon": {
+  "type": "Shotgun",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "Truth": {
+  "type": "Rocket Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Void"
+ },
+ "Two-Tailed Fox": {
+  "type": "Rocket Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "Whirling Ovation": {
+  "type": "Rocket Launcher",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Whisper of the Worm": {
+  "type": "Sniper Rifle",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Winterbite": {
+  "type": "Glaive",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Stasis"
+ },
+ "Wolfsbane": {
+  "type": "Axe",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ },
+ "Worldline Zero": {
+  "type": "Sword",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Arc"
+ },
+ "Xenophage": {
+  "type": "Machine Gun",
+  "ammo": "power",
+  "bucket": "power",
+  "el": "Solar"
+ }
+}

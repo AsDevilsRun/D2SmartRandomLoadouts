@@ -1,0 +1,119 @@
+{
+ "Hunter": {
+  "arc": [
+   "Ascension",
+   "Flow State",
+   "Lethal Current",
+   "Tempest Strike"
+  ],
+  "solar": [
+   "Crackshot",
+   "Gunpowder Gamble",
+   "Knock 'Em Down",
+   "On Your Mark"
+  ],
+  "void": [
+   "Stylish Executioner",
+   "Trapper's Ambush",
+   "Vanishing Step",
+   "On the Prowl"
+  ],
+  "stasis": [
+   "Grim Harvest",
+   "Shatterdive",
+   "Touch of Winter",
+   "Winter's Shroud"
+  ],
+  "strand": [
+   "Ensnaring Slam",
+   "Threaded Specter",
+   "Whirling Maelstrom",
+   "Widow's Silk"
+  ],
+  "prismatic": [
+   "Ascension",
+   "Gunpowder Gamble",
+   "Stylish Executioner",
+   "Winter's Shroud",
+   "Threaded Specter"
+  ]
+ },
+ "Titan": {
+  "arc": [
+   "Juggernaut",
+   "Knockout",
+   "Storm's Keep",
+   "Touch of Thunder"
+  ],
+  "solar": [
+   "Consecration",
+   "Roaring Flames",
+   "Shieldburst",
+   "Sol Invictus"
+  ],
+  "void": [
+   "Bastion",
+   "Controlled Demolition",
+   "Offensive Bulwark",
+   "Unbreakable"
+  ],
+  "stasis": [
+   "Cryoclasm",
+   "Diamond Lance",
+   "Howl of the Storm",
+   "Tectonic Harvest"
+  ],
+  "strand": [
+   "Banner of War",
+   "Drengr's Lash",
+   "Flechette Storm",
+   "Into the Fray"
+  ],
+  "prismatic": [
+   "Knockout",
+   "Consecration",
+   "Unbreakable",
+   "Diamond Lance",
+   "Drengr's Lash"
+  ]
+ },
+ "Warlock": {
+  "arc": [
+   "Arc Soul",
+   "Electrostatic Mind",
+   "Ionic Sentry",
+   "Lightning Surge"
+  ],
+  "solar": [
+   "Heat Rises",
+   "Hellion",
+   "Icarus Dash",
+   "Touch of Flame"
+  ],
+  "void": [
+   "Chaos Accelerant",
+   "Child of the Old Gods",
+   "Feed the Void",
+   "Soul Siphon"
+  ],
+  "stasis": [
+   "Bleak Watcher",
+   "Frostpulse",
+   "Glacial Harvest",
+   "Iceflare Bolts"
+  ],
+  "strand": [
+   "Mindspun Invocation",
+   "The Wanderer",
+   "Weaver's Call",
+   "Weavewalk"
+  ],
+  "prismatic": [
+   "Lightning Surge",
+   "Hellion",
+   "Feed the Void",
+   "Bleak Watcher",
+   "Weaver's Call"
+  ]
+ }
+}
