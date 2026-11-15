@@ -344,10 +344,10 @@ function rollNeed(rules, E) {
 }
 
 /* ---------- Sturm + Together Forever ----------
-   Sturm always rolls with a weapon that has the Together Forever perk (Drang, Unfall) in another slot. The pair overrides
+   Sturm always rolls with a weapon that has the Together Forever perk (Drang, Unfall), or an owned Drang, in another slot. The pair overrides
    "No double primary"; every other weapon rule still holds for the partner (Monochromatic, No double special, champions,
-   the build's weapon need). With no eligible Together Forever weapon in the inventory, the partner is a Drang placeholder
-   to pull from Collections (or the Postmaster). index.html doesn't pair. */
+   the build's weapon need). Only a player who owns no Drang or Together Forever weapon gets a Drang placeholder to pull from
+   Collections (or the Postmaster); if they own one and the rules rule it out, that roll goes without Sturm. index.html doesn't pair. */
 const TOGETHER_FOREVER = "together forever";
 const isSturm = i => !!i && norm(i.def.name) === "sturm";
 /* A plugged plug counts if its name is Together Forever, or if it carries the Together Forever perk. Plug names aren't always
@@ -365,6 +365,11 @@ function hasTogetherForever(i) {
     return !!p?.pk?.some(x => tf.has(x) || tf.has(Number(x)));
   });
 }
+
+/* Sturm's partner: a weapon with Together Forever, or one the player owns named Drang (any version), even if its perks can't be read. */
+const isDrang = i => /^drang\b/.test(norm(i.def.name));
+const isSturmPartner = i => hasTogetherForever(i) || (!i.virtual && isDrang(i));
+const ownsSturmPartner = () => state.items.some(i => i.def.itemType === ITEMTYPE_WEAPON && isSturmPartner(i));
 
 /* Hashes of the Together Forever perk, from Bungie's perk names (one download per game update, then cached).
    Only needed when Sturm can roll. A failed download isn't cached, so the next roll tries again. */
@@ -396,7 +401,7 @@ function drangPlaceholder(E) {
 function pairSturm(weapons, rules, E, need, { avoid = null, force = false, forceNeed = false } = {}) {
   const sturm = weapons?.find(isSturm);
   if (!sturm) return weapons;
-  if (!force && weapons.some(i => i !== sturm && hasTogetherForever(i))) return weapons;
+  if (!force && weapons.some(i => i !== sturm && isSturmPartner(i))) return weapons;
   const fits = c => {
     if (c.def.bucket === sturm.def.bucket || (isExo(c) && isExo(sturm))) return false;
     const set = [...weapons.filter(i => i.def.bucket !== c.def.bucket), c];
@@ -405,10 +410,10 @@ function pairSturm(weapons, rules, E, need, { avoid = null, force = false, force
     if (need && !(forceNeed ? need.test(c) : set.some(need.test))) return false;
     return true;
   };
-  let cands = weaponPool(rules, E).filter(i => hasTogetherForever(i) && fits(i));
+  let cands = weaponPool(rules, E).filter(i => isSturmPartner(i) && fits(i));
   if (!cands.length) {
-    const owned = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && /^drang\b/.test(norm(i.def.name)));
-    if (owned.length) log(`Sturm: no owned weapon with Together Forever fits the rules (${owned.length} Drang owned; ${owned.some(hasTogetherForever) ? "ruled out by Monochromatic, champions or the build's weapon need" : "their perks don't show Together Forever"}).`);
+    // Pull a Drang only if the player owns none; an owned one that the rules rule out means no Sturm this roll.
+    if (ownsSturmPartner()) { log("Sturm: your Drang / Together Forever weapons don't fit this roll's rules (Monochromatic, champions, double special or the build's weapon need); rolling without Sturm."); return null; }
     const d = drangPlaceholder(E); if (d && fits(d)) cands = [d];
   }
   if (!cands.length) return null;
@@ -429,7 +434,7 @@ function rollWeaponsPaired(rules, E, need) {
 function rerollWeaponSlotPaired(rules, E, bucket, need = null, forceNeed = false) {
   const cur = state.roll.weapons || [];
   const old = cur.find(i => i.def.bucket === bucket);
-  if (cur.some(isSturm) && old && !isSturm(old) && hasTogetherForever(old)) {
+  if (cur.some(isSturm) && old && !isSturm(old) && isSturmPartner(old)) {
     // Rerolling Sturm's partner: another Together Forever weapon, or the same one if it's the only one.
     const w = pairSturm(cur, rules, E, need, { avoid: old, force: true, forceNeed });
     if (!w) throw new Error(`No Together Forever weapon fits the rules alongside Sturm.`);
@@ -437,7 +442,7 @@ function rerollWeaponSlotPaired(rules, E, bucket, need = null, forceNeed = false
     return w;
   }
   // Rerolling Sturm: its partner was there only for Sturm, so that slot rerolls too (first, with Sturm still fixed).
-  const partner = isSturm(old) ? cur.find(i => i !== old && hasTogetherForever(i)) : null;
+  const partner = isSturm(old) ? cur.find(i => i !== old && isSturmPartner(i)) : null;
   for (let k = 0; k < 20; k++) {
     let w;
     if (partner) {

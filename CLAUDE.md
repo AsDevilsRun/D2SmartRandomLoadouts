@@ -52,7 +52,7 @@ Everything runs in the visitor's browser: HTML is layout, CSS is styling, all lo
 - Necrotic Grip: Weapon chance 50% for Thorn and Osteo Striga. The old 4× soft boost doesn't apply to rows with a Weapon chance.
 - Oathkeeper excludes crossbows (Opaque Hourglass, A Good Shout, Submersion, Heirloom), which the game types as Combat Bow.
 - Wolfsbane counts as a sword for Stronghold.
-- Sturm (build.html only): always rolls with a weapon whose plugged perks include Together Forever (Drang, Unfall), overriding No double primary; other weapon rules still apply to the partner. With none eligible, the partner is a Drang placeholder to pull. Rerolling Sturm's slot rerolls the partner's slot too. index.html doesn't pair. Exotic weapon balancing ignores the pairing.
+- Sturm (build.html only): always rolls with a weapon whose plugged perks include Together Forever (Drang, Unfall), or any owned weapon named Drang, overriding No double primary; other weapon rules still apply to the partner. Together Forever is matched by plug name or by perk hash (plug names can be missing from the lite definitions). Only a player who owns no Drang or Together Forever weapon gets a Drang placeholder to pull; if they own one and the rules rule it out, that roll goes without Sturm. Rerolling Sturm's slot rerolls the partner's slot too. index.html doesn't pair. Exotic weapon balancing ignores the pairing.
 - Exotic weapon balancing: equal within each class, all exotics counted as owned, forced picks balanced too, factors stratified by exotic armor piece.
 - Subclass plug tags (`data/subclass_plugs.csv`), cleaned up in commit ea58140:
   - Jumps have no tags.

@@ -32,10 +32,13 @@ const setup = `(() => {
   h.ev(`delete state.plugDefs[7777]; entCache.data.pp7777 = { b: 0, pk: [4242] }; entCache.data.tfPerks = [4242]`);
   r = JSON.parse(h.ev(`JSON.stringify(rollWeaponsPaired(state.rules, 0, sturmNeed).map(i => i.id))`));
   assert.equal(r[1], "d1", "perk-hash match");
-  h.ev(`entCache.data.tfPerks = []`);
-  r = JSON.parse(h.ev(`JSON.stringify(rollWeaponsPaired(state.rules, 0, sturmNeed).map(i => [i.def.name, !!i.virtual]))`));
-  assert.deepEqual(r[1], ["Drang", true], "no match falls back to the placeholder");
-  h.ev(`entCache.data.tfPerks = [4242]`);
+  // Perks unreadable: an owned Drang still counts by name; never a placeholder while one is owned.
+  h.ev(`entCache.data.tfPerks = []; delete entCache.data.pp7777`);
+  r = JSON.parse(h.ev(`JSON.stringify(rollWeaponsPaired(state.rules, 0, sturmNeed).map(i => [i.id, !!i.virtual]))`));
+  assert.deepEqual(r[1], ["d1", false], "owned Drang by name");
+  // Owned Drang ruled out (Solar Drang, Arc Monochromatic): no placeholder, Sturm can't pair.
+  assert.equal(h.ev(`pairSturm([state.items.find(i => i.id === "s1"), { def: { bucket: BUCKET.ENERGY, ammo: 2, name: "x" } }, { def: { bucket: BUCKET.POWER, ammo: 3, name: "y" } }], state.rules, 2, null)`), null);
+  h.ev(`entCache.data.tfPerks = [4242]; entCache.data.pp7777 = { b: 0, pk: [4242] }`);
   // Rolls without Sturm are untouched; Sturm always has its partner over many plain rolls.
   const plain = h.ev(`(() => { let bad = 0; for (let k = 0; k < 300; k++) { const w = rollWeaponsPaired(state.rules, 0, null);
     if (w.some(isSturm) && !w.some(i => i.id === "d1")) bad++; } return bad; })()`);
