@@ -28,6 +28,14 @@ const setup = `(() => {
     r = JSON.parse(h.ev(`JSON.stringify(rollWeaponsPaired(state.rules, 0, sturmNeed).map(i => i.id))`));
     assert.equal(r[0], "s1"); assert.equal(r[1], "d1");
   }
+  // Plug name missing from the definitions (lite download): matched by the plug's Together Forever perk hash.
+  h.ev(`delete state.plugDefs[7777]; entCache.data.pp7777 = { b: 0, pk: [4242] }; entCache.data.tfPerks = [4242]`);
+  r = JSON.parse(h.ev(`JSON.stringify(rollWeaponsPaired(state.rules, 0, sturmNeed).map(i => i.id))`));
+  assert.equal(r[1], "d1", "perk-hash match");
+  h.ev(`entCache.data.tfPerks = []`);
+  r = JSON.parse(h.ev(`JSON.stringify(rollWeaponsPaired(state.rules, 0, sturmNeed).map(i => [i.def.name, !!i.virtual]))`));
+  assert.deepEqual(r[1], ["Drang", true], "no match falls back to the placeholder");
+  h.ev(`entCache.data.tfPerks = [4242]`);
   // Rolls without Sturm are untouched; Sturm always has its partner over many plain rolls.
   const plain = h.ev(`(() => { let bad = 0; for (let k = 0; k < 300; k++) { const w = rollWeaponsPaired(state.rules, 0, null);
     if (w.some(isSturm) && !w.some(i => i.id === "d1")) bad++; } return bad; })()`);

@@ -350,10 +350,33 @@ function rollNeed(rules, E) {
    to pull from Collections (or the Postmaster). index.html doesn't pair. */
 const TOGETHER_FOREVER = "together forever";
 const isSturm = i => !!i && norm(i.def.name) === "sturm";
+/* A plugged plug counts if its name is Together Forever, or if it carries the Together Forever perk. Plug names aren't always
+   in the downloaded definitions (the lite download can lack them), but the plugs' perk hashes are: ensureChampData looks them
+   up for every plugged weapon plug. */
 function hasTogetherForever(i) {
   if (i.togetherForever) return true;
   const socks = state.socketData?.sockets?.[i.id]?.sockets;
-  return !!socks && socks.some(s => s.plugHash && norm(plugName(s.plugHash)) === TOGETHER_FOREVER);
+  if (!socks) return false;
+  const tf = new Set(entCache.data.tfPerks || []);
+  return socks.some(({ plugHash: h }) => {
+    if (!h) return false;
+    if (norm(plugName(h)) === TOGETHER_FOREVER) return true;
+    const p = state.plugDefs[h]?.pk ? state.plugDefs[h] : entCache.data["pp" + h];
+    return !!p?.pk?.some(x => tf.has(x) || tf.has(Number(x)));
+  });
+}
+
+/* Hashes of the Together Forever perk, from Bungie's perk names (one download per game update, then cached).
+   Only needed when Sturm can roll. A failed download isn't cached, so the next roll tries again. */
+async function ensureTogetherForever() {
+  await entCache.open();
+  if (entCache.data.tfPerks || !weaponPool(state.rules, 0).some(isSturm)) return;
+  try {
+    log("Reading Together Forever perk…");
+    const all = await (await fetch(BUNGIE + state.manifestPaths.DestinySandboxPerkDefinition)).json();
+    entCache.data.tfPerks = Object.keys(all).filter(h => norm(all[h].displayProperties?.name || "") === TOGETHER_FOREVER).map(Number);
+    entCache.save();
+  } catch (e) { log("Couldn't read perk names (" + e.message + "); Together Forever is matched by plug name only."); }
 }
 
 function drangPlaceholder(E) {
@@ -383,7 +406,11 @@ function pairSturm(weapons, rules, E, need, { avoid = null, force = false, force
     return true;
   };
   let cands = weaponPool(rules, E).filter(i => hasTogetherForever(i) && fits(i));
-  if (!cands.length) { const d = drangPlaceholder(E); if (d && fits(d)) cands = [d]; }
+  if (!cands.length) {
+    const owned = state.items.filter(i => i.def.itemType === ITEMTYPE_WEAPON && /^drang\b/.test(norm(i.def.name)));
+    if (owned.length) log(`Sturm: no owned weapon with Together Forever fits the rules (${owned.length} Drang owned; ${owned.some(hasTogetherForever) ? "ruled out by Monochromatic, champions or the build's weapon need" : "their perks don't show Together Forever"}).`);
+    const d = drangPlaceholder(E); if (d && fits(d)) cands = [d];
+  }
   if (!cands.length) return null;
   const fresh = avoid ? cands.filter(i => norm(i.def.name) !== norm(avoid.def.name)) : cands;
   const p = pickWeapon(fresh.length ? fresh : cands);
@@ -1407,6 +1434,7 @@ function requireBuild() { if (!hasBuild()) throw new Error('Roll a full build fi
 async function rerollOne(bucket) {
   requireBuild();
   await ensureChampData();
+  await ensureTogetherForever();
   await ensureWeaponBalance(selectedChar(), selectedClass());
   state.roll.weapons = rerollWeaponSlotPaired(state.rules, await weaponElement(selectedChar()), bucket, needTest(weaponNeed()));
   if (state.rules.mods && state.roll.armor) {
@@ -1419,6 +1447,7 @@ async function rerollOne(bucket) {
 async function doRoll({ subclass, weapons, armor }) {
   if (!(subclass && weapons && armor === true)) requireBuild();
   await ensureChampData();
+  await ensureTogetherForever();
   await ensureAbilityBalance(selectedChar(), selectedClass());
   await ensureWeaponBalance(selectedChar(), selectedClass());
   const cid = selectedChar();
