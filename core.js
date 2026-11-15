@@ -754,8 +754,9 @@ function weaponPool(rules, E) {
 /* ---------- weapon rolling (both pages) ----------
    A page can set PAGE.pickWeapon(cands) to choose among candidates (build.html: weighted by synergy; default: every name
    equally likely) and PAGE.weaponSearchOrder(pool) to order names for the complete search (default: random).
-   need (build.html only) is an optional { test(item), label } that one weapon must pass. */
-const pickWeapon = cands => (PAGE.pickWeapon || pickByName)(cands);
+   need (build.html only) is an optional { test(item), label, prefer(item) } that one weapon must pass; prefer, if set,
+   multiplies the weights of the weapon picked to meet it. */
+const pickWeapon = (cands, need) => (PAGE.pickWeapon || pickByName)(cands, need);
 
 /* Reroll one weapon slot, keeping the other two and all weapon rules. forceNeed: the new weapon must meet need. */
 function rerollWeaponSlot(rules, E, bucket, need = null, forceNeed = false) {
@@ -796,7 +797,7 @@ function rollWeapons(rules, E, need = null) {
     let exo = false, ok = true;
     const take = i => { picks[i.def.bucket] = i; ammo[i.def.ammo]++; if (isExo(i)) exo = true; };
     const ammoOK = i => !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1]) && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]);
-    if (need) take(pickWeapon(pool.filter(need.test)));
+    if (need) take(pickWeapon(pool.filter(need.test), need)); // need.prefer (build.html) can favor some of them
     if (rules.guaranteedExoticWeapon && !exo) {
       const ex = pool.filter(i => isExo(i) && !picks[i.def.bucket] && ammoOK(i));
       if (!ex.length) continue;

@@ -175,7 +175,7 @@ const PAGE = {
   busyIds: ["btnRollArmorSub"],
 };
 </script>
-<script src="core.js?v=3"></script>
+<script src="core.js?v=4"></script>
 <script>
 "use strict";
 
@@ -205,7 +205,7 @@ function weaponNeed(soft = false) {
   const types = [], names = [], excl = [];
   const exo = state.roll.armorClass === selectedClass() ? (state.roll.armor || []).find(isExo) : null;
   const rule = exo ? exoticRule(exo.def.name) : null;
-  let el = 0, elLabel = "";
+  let els = [], elLabel = "", preferAmmo = 0;
   const sub = state.roll.subclass && state.roll.subclass.charId === selectedChar() ? state.roll.subclass : null;
   // Or-weapon rows: required only when the rolled subclass doesn't meet the row; otherwise just more likely.
   const forced = rule?.orWeapon ? !(sub && fitsRolledSubclass(rule, sub)) : rule?.forceWeapon !== false;
@@ -213,16 +213,22 @@ function weaponNeed(soft = false) {
     types.push(...(rule.weaponTypes || []));
     names.push(...(rule.weapons || []));
     excl.push(...(rule.excludedWeapons || []));
-    const src = rule.weaponElement || WEAPON_ELEMENT_DEFAULT[norm(rule.name || exo.def.name)] || "";
-    el = src ? rolledAbilityElement(src) : 0;
-    if (el) elLabel = `a ${DMG_NAME[el]} weapon (matches your ${src})`;
+    // "Weapon element": the weapon matches the element of any listed rolled ability (e.g. Foetracer: grenade, melee, super).
+    const srcs = rule.weaponElement || [];
+    els = [...new Set(srcs.map(rolledAbilityElement).filter(Boolean))];
+    if (els.length) elLabel = `${els[0] === 2 ? "an" : "a"} ${els.map(e => DMG_NAME[e]).join("/")} weapon (matches your ${srcs.length < 2 ? srcs[0] : srcs.slice(0, -1).join(", ") + " or " + srcs[srcs.length - 1]})`;
+    preferAmmo = rule.preferredAmmo || 0;
   }
-  if (!types.length && !names.length && !el) return null;
-  return { types: types.map(norm), names: names.map(norm), excl: excl.map(norm), el, chance: rule?.weaponChance || 0, label: [...types, ...names, ...(elLabel ? [elLabel] : [])].join(" / ") };
+  if (!types.length && !names.length && !els.length) return null;
+  const need = { types: types.map(norm), names: names.map(norm), excl: excl.map(norm), els, chance: rule?.weaponChance || 0, label: [...types, ...names, ...(elLabel ? [elLabel] : [])].join(" / ") };
+  // "Preferred ammo": weapons of that ammo type are PREFERRED_AMMO_BOOST times as likely when this need picks its weapon.
+  if (preferAmmo) need.prefer = i => i.def.ammo === preferAmmo ? PREFERRED_AMMO_BOOST : 1;
+  return need;
 }
 
 /* Element of the rolled grenade / melee / super / subclass ("Weapon element" sheet column). 0 if unknown. */
-const WEAPON_ELEMENT_DEFAULT = { "verity's brow": "grenade", "mantle of battle harmony": "super", "mantle of battle-harmony": "super" };
+const PREFERRED_AMMO_BOOST = 4;
+const AMMO_BY_WORD = { primary: 1, special: 2, heavy: 3, power: 3 };
 function rolledAbilityElement(src) {
   const sub = state.roll.subclass && state.roll.subclass.charId === selectedChar() ? state.roll.subclass : null;
   if (!sub) return 0;
@@ -239,7 +245,7 @@ function meetsNeed(i, need) {
   if (!need) return true;
   const t = weaponTypeKey(i.def.typeName || ""), n = norm(i.def.name);
   if (need.excl?.includes(n)) return false; // e.g. crossbows are typed "Combat Bow" in the game data
-  if (need.el && i.dmg === need.el) return true;
+  if (need.els?.includes(i.dmg)) return true;
   return need.names.includes(n) || need.types.some(x => weaponTypeKey(x) === t);
 }
 
@@ -294,10 +300,10 @@ function groupByName(items) {
 }
 
 /* Like pickByName, but weighted per name (weight of a name = its best copy). */
-function pickByNameWeighted(cands, tags) {
+function pickByNameWeighted(cands, tags, prefer) {
   const groups = groupByName(cands);
   if (!groups.size) return null;
-  const wByName = new Map([...groups].map(([n, g]) => [n, Math.max(...g.map(i => weaponWeight(i, tags)))]));
+  const wByName = new Map([...groups].map(([n, g]) => [n, Math.max(...g.map(i => weaponWeight(i, tags) * (prefer ? prefer(i) : 1)))]));
   const name = weightedPick([...groups.keys()], n => wByName.get(n));
   return pick(groups.get(name));
 }
@@ -510,9 +516,9 @@ function balancePool(rules, E) {
    candidates for that pick plus the total weight of legendary candidates; free = the usual exotic pick. */
 function buildOdds(rules, E, tags, index) {
   const pool = balancePool(rules, E);
-  const byName = list => {
+  const byName = (list, prefer) => {
     const m = new Map();
-    for (const i of list) { const k = norm(i.def.name); m.set(k, Math.max(m.get(k) || 0, weaponWeight(i, tags))); }
+    for (const i of list) { const k = norm(i.def.name); m.set(k, Math.max(m.get(k) || 0, weaponWeight(i, tags) * (prefer ? prefer(i) : 1))); }
     return m;
   };
   const toIdx = m => [...m].filter(([k]) => index.has(k)).map(([k, w]) => [index.get(k), w]);
@@ -523,8 +529,8 @@ function buildOdds(rules, E, tags, index) {
   if (!need || !pf) return { pf: 0, free };
   const cands = pool.filter(i => meetsNeed(i, need));
   if (!cands.length) return { pf: 0, free };
-  const legW = [...byName(cands.filter(i => !isExo(i))).values()].reduce((a, b) => a + b, 0);
-  return { pf, free, forced: toIdx(byName(cands.filter(isExo))), legW };
+  const legW = [...byName(cands.filter(i => !isExo(i)), need.prefer).values()].reduce((a, b) => a + b, 0);
+  return { pf, free, forced: toIdx(byName(cands.filter(isExo), need.prefer)), legW };
 }
 
 function balanceShares(builds, f, n) {
@@ -1046,7 +1052,8 @@ async function loadSheet() {
         prismNeeds: splitList(get(r, "Prismatic needs")), focus: splitList(get(r, "Focus")),
         weaponTypes: splitList(get(r, "Weapon types")), weapons: splitList(get(r, "Weapons")), excludedWeapons: splitList(get(r, "Excluded weapons")),
         forceWeapon: (get(r, "Force weapon") || get(r, "Force weapons")).toUpperCase() !== "N",
-        weaponElement: norm(get(r, "Weapon element")),
+        weaponElement: splitList(get(r, "Weapon element")).map(norm),
+        preferredAmmo: AMMO_BY_WORD[norm(get(r, "Preferred ammo"))] || 0,
         orWeapon: /^y/i.test(get(r, "Or weapon")),
         orWeaponShare: parseShare(get(r, "Or weapon share"), OR_WEAPON_SHARE),
         weaponChance: parseShare(get(r, "Weapon chance"), 0),
@@ -1533,7 +1540,7 @@ PAGE.updateButtons = busyNow => {
   for (const el of document.querySelectorAll("[data-reroll]")) el.disabled = busyNow || !ok;
 };
 /* Weapon picks weigh each name by synergy; the complete search tries names in weighted order. */
-PAGE.pickWeapon = cands => pickByNameWeighted(cands, buildTags());
+PAGE.pickWeapon = (cands, need) => pickByNameWeighted(cands, buildTags(), need?.prefer);
 PAGE.weaponSearchOrder = pool => {
   const tags = buildTags(), byName = groupByName(pool);
   const nameW = n => Math.max(...(byName.get(n) || []).map(i => weaponWeight(i, tags)));

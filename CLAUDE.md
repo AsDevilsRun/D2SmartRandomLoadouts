@@ -27,8 +27,8 @@ Everything runs in the visitor's browser: HTML is layout, CSS is styling, all lo
 ## core.js
 
 - `PAGE` hooks: `rulesKey`, `defaultRules`, `forcedRules`, `extraState`, `busyIds`, `returnTo`, `renderExtra`, `equipExtra`, `updateButtons`, `pickWeapon`, `weaponSearchOrder`.
-- Pages load `core.js?v=3`. Bump the number on both pages whenever `core.js` changes, or browsers may pair a new page with an old cached `core.js` for up to 10 minutes.
-- Weapon rolling (`rollWeapons`, `rerollWeaponSlot`) is shared. `build.html` plugs in weighted picks (`PAGE.pickWeapon`) and an optional weapon need (`{ test(item), label }`); `index.html` uses the defaults.
+- Pages load `core.js?v=4`. Bump the number on both pages whenever `core.js` changes, or browsers may pair a new page with an old cached `core.js` for up to 10 minutes.
+- Weapon rolling (`rollWeapons`, `rerollWeaponSlot`) is shared. `build.html` plugs in weighted picks (`PAGE.pickWeapon(cands, need)`) and an optional weapon need (`{ test(item), label, prefer(item) }`; `prefer` multiplies weights for the weapon picked to meet the need); `index.html` uses the defaults.
 - Sign-in: public OAuth client, so tokens last about an hour and can't be refreshed; a 401 shows the sign-in button. The API key in `CONFIG` is public by necessity and is Origin-restricted in the Bungie portal.
 - Caches: IndexedDB database `d2srl`, store `kv`: item definitions (`defs_<SLIM_VERSION>_<manifest>`), per-item lookups (`ent_…`), Collections sources (`src_…`), exotic weapon balance factors (`wbal<BALANCE_VERSION>_<class>_…`). localStorage: `d2r_token`, `d2r_rules` (index), `d2b_rules` (build), `d2r_off_w` / `d2r_off_a` (exotic lists).
 - Equipping verifies from each action's response (equipStatus 1 = success), not from a profile read, because Bungie's profile lags behind changes.
@@ -52,6 +52,7 @@ Everything runs in the visitor's browser: HTML is layout, CSS is styling, all lo
 - Necrotic Grip: Weapon chance 50% for Thorn and Osteo Striga. The old 4× soft boost doesn't apply to rows with a Weapon chance.
 - Oathkeeper excludes crossbows (Opaque Hourglass, A Good Shout, Submersion, Heirloom), which the game types as Combat Bow.
 - Wolfsbane counts as a sword for Stronghold.
+- Foetracer: one weapon must match the element of the rolled grenade, melee or super (synergy sheet column Weapon element = "Grenade, Melee, Super"), and heavy weapons are 4× as likely for that pick (Preferred ammo = Heavy, `PREFERRED_AMMO_BOOST`). Verity's Brow (Grenade) and Mantle of Battle Harmony (Super) use the same column; they used to be hard-coded.
 - Sturm (build.html only): always rolls with a weapon whose plugged perks include Together Forever (Drang, Unfall), or any owned weapon named Drang, overriding No double primary; other weapon rules still apply to the partner. Together Forever is matched by plug name or by perk hash (plug names can be missing from the lite definitions). Only a player who owns no Drang or Together Forever weapon gets a Drang placeholder to pull; if they own one and the rules rule it out, that roll goes without Sturm. Rerolling Sturm's slot rerolls the partner's slot too. index.html doesn't pair. Exotic weapon balancing ignores the pairing.
 - Exotic weapon balancing: equal within each class, all exotics counted as owned, forced picks balanced too, factors stratified by exotic armor piece.
 - Subclass plug tags (`data/subclass_plugs.csv`), cleaned up in commit ea58140:
@@ -77,7 +78,7 @@ python3 tools/sim/simulate.py [presses] [output folder]
 
 Defaults: 60,000 presses (split evenly across classes) and `tools/sim/out/` (ignored by git). Takes about 20 s per 50,000 presses. It reads `data/*.csv` and writes `subclasses.csv`, `exotic_armor.csv`, `exotic_weapons.csv`, `aspects.csv`, `fragments.csv` and `abilities.csv` (percent of that class's or class-and-subclass's rolls).
 
-It mirrors build.html's "Roll build" with every exotic and subclass item owned: subclass balancing, synergy rules (incl. Or weapon share and Weapon chance), ability balancing, aspect/fragment tag weighting and stratified exotic weapon balancing. Legendary weapons are stand-ins (5 per weapon type). If you change the rolling or balancing code in `build.html`, change the simulation to match.
+It mirrors build.html's "Roll build" with every exotic and subclass item owned: subclass balancing, synergy rules (incl. Or weapon share and Weapon chance), ability balancing, aspect/fragment tag weighting and stratified exotic weapon balancing. Legendary weapons are stand-ins (5 per weapon type) with no element, so Weapon element needs (Foetracer, Verity's Brow, Mantle of Battle Harmony) and Preferred ammo aren't modeled; nor is the Sturm pairing. If you change the rolling or balancing code in `build.html`, change the simulation to match.
 
 ### Parity check
 
@@ -85,7 +86,7 @@ It mirrors build.html's "Roll build" with every exotic and subclass item owned: 
 python3 tools/sim/parity.py [simulation output folder]
 ```
 
-Reads the simulation's output and, per class, checks every rate against an even share: exotic armor within ±15%, subclasses within ±10%, exotic weapons within ±35%. Writes `parity.csv` next to the inputs and exits 1 if any group fails. Bands assume 300,000 presses; at the 60,000 default, sampling noise alone can push exotic armor past ±15%. Last run (commit f72362a + Sturm pairing): all 9 checks pass; armor 2.01–2.25% (even 2.13%), subclasses 16.44–16.84%, exotic weapons 0.60–0.88% (even 0.71%).
+Reads the simulation's output and, per class, checks every rate against an even share: exotic armor within ±15%, subclasses within ±10%, exotic weapons within ±35%. Writes `parity.csv` next to the inputs and exits 1 if any group fails. Bands assume 300,000 presses; at the 60,000 default, sampling noise alone can push exotic armor past ±15%. Last run (commit a74b96d + Foetracer weapon element): all 9 checks pass; armor 2.01–2.25% (even 2.13%), subclasses 16.44–16.84%, exotic weapons 0.60–0.88% (even 0.71%).
 
 `tools/sim/inputs/` holds game data the CSVs don't: aspects per subclass and abilities per subclass slot (Destiny Data Compendium; jumps and Prismatic supers from the owner), ability elements, fragment slots per aspect (Destiny 2: Endgame Analysis), exotic weapon type/ammo/slot, and exotic weapon tier letters. Update these when the game adds abilities, aspects or exotic weapons.
 
@@ -95,10 +96,10 @@ Reads the simulation's output and, per class, checks every rate against an even 
 cd tools/tests && npm install && npm test
 ```
 
-jsdom loads the real pages with a mocked Bungie API and fake IndexedDB. The suites cover booting and definition caching, weapon rules and the complete weapon search, Postmaster pulls, equip verification and refused equips, sign-in expiry, rule storage, section-only rolls on index.html, partial-roll gating, weapon type matching, tag/CSV loading (`tag-data.test.js` also compares with the original baked-in data at commit ae8056e), Or weapon share, Weapon chance, Sturm pairing, weapon and ability balancing, partial-roll gating, and the caches. The weapon-balance and ability-balance suites check rates, so they're statistical; rerun once before treating a single failure as real. Run them after any change to the pages or `core.js`.
+jsdom loads the real pages with a mocked Bungie API and fake IndexedDB. The suites cover booting and definition caching, weapon rules and the complete weapon search, Postmaster pulls, equip verification and refused equips, sign-in expiry, rule storage, section-only rolls on index.html, partial-roll gating, weapon type matching, tag/CSV loading (`tag-data.test.js` also compares with the original baked-in data at commit ae8056e), Or weapon share, Weapon chance, Foetracer's weapon element and heavy preference, Sturm pairing, weapon and ability balancing, partial-roll gating, and the caches. The weapon-balance and ability-balance suites check rates, so they're statistical; rerun once before treating a single failure as real. Run them after any change to the pages or `core.js`.
 
 ## Artifacts outside the repo
 
-- Roll-rate dashboard ("Smart Build roll rates"): https://claude.ai/artifact/1NuW7kXsBh6xxamSYuEmYm (artifact slug 030ef984-b5b4-4fab-99e2-8d1bc8dce84a). Its datasets are the simulation's six output CSVs plus `parity.csv`, uploaded as assets; a Parity checks section shows `parity.csv`. Last updated from commit f72362a plus the Sturm pairing, 300,000 presses.
+- Roll-rate dashboard ("Smart Build roll rates"): https://claude.ai/artifact/1NuW7kXsBh6xxamSYuEmYm (artifact slug 030ef984-b5b4-4fab-99e2-8d1bc8dce84a). Its datasets are the simulation's six output CSVs plus `parity.csv`, uploaded as assets; a Parity checks section shows `parity.csv`. Last updated from commit a74b96d plus the Foetracer weapon-element change, 300,000 presses.
 - "Ability pick rates: data sources" sheet: https://claude.ai/artifact/X7RwPpnv9YkY8aMtBQXGwR. Its Class abilities row ("partly inferred") is out of date; class abilities now come from the Compendium.
 - Reference spreadsheets the owner shared: Destiny Data Compendium and Destiny 2: Endgame Analysis (source of most tags and tiers).
