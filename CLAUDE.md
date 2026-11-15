@@ -20,7 +20,8 @@ Everything runs in the visitor's browser: HTML is layout, CSS is styling, all lo
 - "Can you X?" is a question. Answer it; don't do X.
 - The owner commits by hand (GitHub web upload or vscode.dev). Claude has read access only. Deliver changed files as a zip that keeps the repo's folder layout, plus a one-line commit message. Don't push or ask for push access.
 - Before saying something is or isn't committed, check `origin` (`git fetch`), don't assume.
-- Don't rebuild the roll-rate dashboard unless asked; give numbers inline.
+- After any change that affects randomness (rolling, balancing, synergy rules, tags, tiers, weights, data CSVs): run the simulation at 300,000 presses, run `tools/sim/parity.py` on its output, report the results inline, and update the roll-rate dashboard with the new CSVs (including `parity.csv`). Parity means: exotic armor even within each class, subclasses even within each class, exotic weapons in a reasonable range around even. If the change isn't modeled by the simulation, say so instead of implying it was tested.
+- Otherwise, don't rebuild the roll-rate dashboard unless asked.
 - Serious mode: no filler, no offers, no soft closings.
 
 ## core.js
@@ -51,6 +52,7 @@ Everything runs in the visitor's browser: HTML is layout, CSS is styling, all lo
 - Necrotic Grip: Weapon chance 50% for Thorn and Osteo Striga. The old 4× soft boost doesn't apply to rows with a Weapon chance.
 - Oathkeeper excludes crossbows (Opaque Hourglass, A Good Shout, Submersion, Heirloom), which the game types as Combat Bow.
 - Wolfsbane counts as a sword for Stronghold.
+- Sturm (build.html only): always rolls with a weapon whose plugged perks include Together Forever (Drang, Unfall), overriding No double primary; other weapon rules still apply to the partner. With none eligible, the partner is a Drang placeholder to pull. Rerolling Sturm's slot rerolls the partner's slot too. index.html doesn't pair. Exotic weapon balancing ignores the pairing.
 - Exotic weapon balancing: equal within each class, all exotics counted as owned, forced picks balanced too, factors stratified by exotic armor piece.
 - Subclass plug tags (`data/subclass_plugs.csv`), cleaned up in commit ea58140:
   - Jumps have no tags.
@@ -77,6 +79,14 @@ Defaults: 60,000 presses (split evenly across classes) and `tools/sim/out/` (ign
 
 It mirrors build.html's "Roll build" with every exotic and subclass item owned: subclass balancing, synergy rules (incl. Or weapon share and Weapon chance), ability balancing, aspect/fragment tag weighting and stratified exotic weapon balancing. Legendary weapons are stand-ins (5 per weapon type). If you change the rolling or balancing code in `build.html`, change the simulation to match.
 
+### Parity check
+
+```
+python3 tools/sim/parity.py [simulation output folder]
+```
+
+Reads the simulation's output and, per class, checks every rate against an even share: exotic armor within ±15%, subclasses within ±10%, exotic weapons within ±35%. Writes `parity.csv` next to the inputs and exits 1 if any group fails. Bands assume 300,000 presses; at the 60,000 default, sampling noise alone can push exotic armor past ±15%. Last run (commit f72362a + Sturm pairing): all 9 checks pass; armor 2.01–2.25% (even 2.13%), subclasses 16.44–16.84%, exotic weapons 0.60–0.88% (even 0.71%).
+
 `tools/sim/inputs/` holds game data the CSVs don't: aspects per subclass and abilities per subclass slot (Destiny Data Compendium; jumps and Prismatic supers from the owner), ability elements, fragment slots per aspect (Destiny 2: Endgame Analysis), exotic weapon type/ammo/slot, and exotic weapon tier letters. Update these when the game adds abilities, aspects or exotic weapons.
 
 ### Page tests
@@ -85,10 +95,10 @@ It mirrors build.html's "Roll build" with every exotic and subclass item owned: 
 cd tools/tests && npm install && npm test
 ```
 
-jsdom loads the real pages with a mocked Bungie API and fake IndexedDB. The suites cover booting and definition caching, weapon rules and the complete weapon search, Postmaster pulls, equip verification and refused equips, sign-in expiry, rule storage, section-only rolls on index.html, partial-roll gating, weapon type matching, tag/CSV loading (`tag-data.test.js` also compares with the original baked-in data at commit ae8056e), Or weapon share, Weapon chance, weapon and ability balancing, partial-roll gating, and the caches. The weapon-balance and ability-balance suites check rates, so they're statistical; rerun once before treating a single failure as real. Run them after any change to the pages or `core.js`.
+jsdom loads the real pages with a mocked Bungie API and fake IndexedDB. The suites cover booting and definition caching, weapon rules and the complete weapon search, Postmaster pulls, equip verification and refused equips, sign-in expiry, rule storage, section-only rolls on index.html, partial-roll gating, weapon type matching, tag/CSV loading (`tag-data.test.js` also compares with the original baked-in data at commit ae8056e), Or weapon share, Weapon chance, Sturm pairing, weapon and ability balancing, partial-roll gating, and the caches. The weapon-balance and ability-balance suites check rates, so they're statistical; rerun once before treating a single failure as real. Run them after any change to the pages or `core.js`.
 
 ## Artifacts outside the repo
 
-- Roll-rate dashboard ("Smart Build roll rates"): https://claude.ai/artifact/1NuW7kXsBh6xxamSYuEmYm (artifact slug 030ef984-b5b4-4fab-99e2-8d1bc8dce84a). Its six datasets are the simulation's six output CSVs, uploaded as assets. Last updated from commit ea58140's data.
+- Roll-rate dashboard ("Smart Build roll rates"): https://claude.ai/artifact/1NuW7kXsBh6xxamSYuEmYm (artifact slug 030ef984-b5b4-4fab-99e2-8d1bc8dce84a). Its datasets are the simulation's six output CSVs plus `parity.csv`, uploaded as assets; a Parity checks section shows `parity.csv`. Last updated from commit f72362a plus the Sturm pairing, 300,000 presses.
 - "Ability pick rates: data sources" sheet: https://claude.ai/artifact/X7RwPpnv9YkY8aMtBQXGwR. Its Class abilities row ("partly inferred") is out of date; class abilities now come from the Compendium.
 - Reference spreadsheets the owner shared: Destiny Data Compendium and Destiny 2: Endgame Analysis (source of most tags and tiers).

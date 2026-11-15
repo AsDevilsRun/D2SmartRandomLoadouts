@@ -317,7 +317,7 @@ function ensureWeaponNeed(rules, E = 0) {
   if (!need || !cur || cur.some(i => meetsNeed(i, need))) return;
   for (const b of shuffle(WEAPON_BUCKETS)) {
     try {
-      state.roll.weapons = rerollWeaponSlot(rules, E, b, needTest(need), true);
+      state.roll.weapons = rerollWeaponSlotPaired(rules, E, b, needTest(need), true);
       log(`Swapped a weapon to add ${need.label}.`);
       return;
     } catch { /* try another slot */ }
@@ -341,6 +341,92 @@ function rollNeed(rules, E) {
     need = null;
   }
   return needTest(need);
+}
+
+/* ---------- Sturm + Together Forever ----------
+   Sturm always rolls with a weapon that has the Together Forever perk (Drang, Unfall) in another slot. The pair overrides
+   "No double primary"; every other weapon rule still holds for the partner (Monochromatic, No double special, champions,
+   the build's weapon need). With no eligible Together Forever weapon in the inventory, the partner is a Drang placeholder
+   to pull from Collections (or the Postmaster). index.html doesn't pair. */
+const TOGETHER_FOREVER = "together forever";
+const isSturm = i => !!i && norm(i.def.name) === "sturm";
+function hasTogetherForever(i) {
+  if (i.togetherForever) return true;
+  const socks = state.socketData?.sockets?.[i.id]?.sockets;
+  return !!socks && socks.some(s => s.plugHash && norm(plugName(s.plugHash)) === TOGETHER_FOREVER);
+}
+
+function drangPlaceholder(E) {
+  let best = null;
+  for (const [h, d] of Object.entries(state.defs)) {
+    if (d.itemType !== ITEMTYPE_WEAPON || norm(d.name) !== "drang" || !d.ammo || !WEAPON_BUCKETS.includes(d.bucket)) continue;
+    if (!elementOK(d.bucket, d.dmg, E) || (best && (best.def.coll || !d.coll))) continue;
+    const pm = state.postmaster.has(d.name);
+    best = { id: null, hash: Number(h), def: d, owner: pm ? "postmaster" : "collections", equipped: false, power: 0, dmg: d.dmg, virtual: true, postmaster: pm, togetherForever: true };
+  }
+  return best;
+}
+
+/* weapons with Sturm's partner chosen (or kept, if one is already there). null if no partner fits the rules.
+   avoid: a weapon to replace with a different name if possible. force: choose a partner even if one is already there.
+   forceNeed: the partner itself must meet need. */
+function pairSturm(weapons, rules, E, need, { avoid = null, force = false, forceNeed = false } = {}) {
+  const sturm = weapons?.find(isSturm);
+  if (!sturm) return weapons;
+  if (!force && weapons.some(i => i !== sturm && hasTogetherForever(i))) return weapons;
+  const fits = c => {
+    if (c.def.bucket === sturm.def.bucket || (isExo(c) && isExo(sturm))) return false;
+    const set = [...weapons.filter(i => i.def.bucket !== c.def.bucket), c];
+    if (rules.noDoubleSpecial && set.filter(i => i.def.ammo === 2).length > 1) return false;
+    if (!requiredChamps(rules).every(ch => set.some(i => champsOf(i).has(ch)))) return false;
+    if (need && !(forceNeed ? need.test(c) : set.some(need.test))) return false;
+    return true;
+  };
+  let cands = weaponPool(rules, E).filter(i => hasTogetherForever(i) && fits(i));
+  if (!cands.length) { const d = drangPlaceholder(E); if (d && fits(d)) cands = [d]; }
+  if (!cands.length) return null;
+  const fresh = avoid ? cands.filter(i => norm(i.def.name) !== norm(avoid.def.name)) : cands;
+  const p = pickWeapon(fresh.length ? fresh : cands);
+  log(`Sturm: paired with ${p.def.name} (Together Forever)${p.virtual ? "; pull it to use it" : ""}.`);
+  return WEAPON_BUCKETS.map(b => b === p.def.bucket ? p : weapons.find(i => i.def.bucket === b));
+}
+
+function rollWeaponsPaired(rules, E, need) {
+  for (let k = 0; k < 50; k++) {
+    const w = pairSturm(rollWeapons(rules, E, need), rules, E, need);
+    if (w) return w;
+  }
+  throw new Error("Couldn't pair Sturm with a Together Forever weapon under the weapon rules.");
+}
+
+function rerollWeaponSlotPaired(rules, E, bucket, need = null, forceNeed = false) {
+  const cur = state.roll.weapons || [];
+  const old = cur.find(i => i.def.bucket === bucket);
+  if (cur.some(isSturm) && old && !isSturm(old) && hasTogetherForever(old)) {
+    // Rerolling Sturm's partner: another Together Forever weapon, or the same one if it's the only one.
+    const w = pairSturm(cur, rules, E, need, { avoid: old, force: true, forceNeed });
+    if (!w) throw new Error(`No Together Forever weapon fits the rules alongside Sturm.`);
+    if (norm(w.find(i => i.def.bucket === bucket).def.name) === norm(old.def.name)) log(`${old.def.name} is the only Together Forever weapon that fits; reroll Sturm's slot to change both.`);
+    return w;
+  }
+  // Rerolling Sturm: its partner was there only for Sturm, so that slot rerolls too (first, with Sturm still fixed).
+  const partner = isSturm(old) ? cur.find(i => i !== old && hasTogetherForever(i)) : null;
+  for (let k = 0; k < 20; k++) {
+    let w;
+    if (partner) {
+      try { state.roll.weapons = rerollWeaponSlot(rules, E, partner.def.bucket, need); w = rerollWeaponSlot(rules, E, bucket, need, forceNeed); }
+      catch { w = null; }
+      finally { state.roll.weapons = cur; }
+    }
+    w = w || rerollWeaponSlot(rules, E, bucket, need, forceNeed);
+    const p = pairSturm(w, rules, E, need);
+    if (p && !p.some(isSturm) && p.some(i => i.togetherForever)) continue;   // the Drang placeholder only stays with Sturm
+    if (p) {
+      if (partner && !p.includes(partner)) log(`Rerolled ${SLOT_NAME[partner.def.bucket]} too: ${partner.def.name} was there for Sturm.`);
+      return p;
+    }
+  }
+  throw new Error(`No other ${SLOT_NAME[bucket]} weapon fits the rules with the other two weapons.`);
 }
 
 /* ---------- exotic weapon balancing ----------
@@ -1322,7 +1408,7 @@ async function rerollOne(bucket) {
   requireBuild();
   await ensureChampData();
   await ensureWeaponBalance(selectedChar(), selectedClass());
-  state.roll.weapons = rerollWeaponSlot(state.rules, await weaponElement(selectedChar()), bucket, needTest(weaponNeed()));
+  state.roll.weapons = rerollWeaponSlotPaired(state.rules, await weaponElement(selectedChar()), bucket, needTest(weaponNeed()));
   if (state.rules.mods && state.roll.armor) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
     catch (e) { log("Couldn't plan mods: " + e.message); }
@@ -1381,7 +1467,7 @@ async function doRoll({ subclass, weapons, armor }) {
     log("Weapons don't match the new subclass element; rerolling weapons.");
     weapons = true;
   }
-  if (weapons) state.roll.weapons = rollWeapons(rules, E, rollNeed(rules, E));
+  if (weapons) state.roll.weapons = rollWeaponsPaired(rules, E, rollNeed(rules, E));
   else if (armor || subclass) ensureWeaponNeed(rules, E);
   if (armorExotic) state.roll.armor = await rollArmor(rules, cls, armorExotic);
   state.roll.mods = null;
