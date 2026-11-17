@@ -175,7 +175,7 @@ const PAGE = {
   busyIds: ["btnRollArmorSub"],
 };
 </script>
-<script src="core.js?v=4"></script>
+<script src="core.js?v=5"></script>
 <script>
 "use strict";
 
@@ -244,6 +244,7 @@ const isPrismaticRoll = sub => /prismatic/i.test(sub.info?.s?.def?.name || "");
 function meetsNeed(i, need) {
   if (!need) return true;
   const t = weaponTypeKey(i.def.typeName || ""), n = norm(i.def.name);
+  if (need.any) return need.any.some(x => (!x.el || x.el === i.dmg) && (!x.ammo || x.ammo === i.def.ammo) && (!x.type || weaponTypeKey(x.type) === t));
   if (need.excl?.includes(n)) return false; // e.g. crossbows are typed "Combat Bow" in the game data
   if (need.els?.includes(i.dmg)) return true;
   return need.names.includes(n) || need.types.some(x => weaponTypeKey(x) === t);
@@ -316,37 +317,86 @@ const buildTags = () => {
 /* A weapon need as core.js's weapon rolling takes it: { test(item), label }. */
 const needTest = need => need && { ...need, test: i => meetsNeed(i, need) };
 
-/* After armor or subclass changes, swap one weapon if a weapon need is no longer met. */
+/* "Weapon need" in subclass_plugs.csv: a rolled aspect or fragment needs one weapon matching any listed item.
+   An item is any of an element, an ammo type and a weapon type, e.g. "Arc Special, Arc Heavy" (Spark of Beacons). */
+const EL_BY_WORD = Object.fromEntries(Object.entries(DMG_NAME).map(([k, v]) => [norm(v), +k]));
+function parseWeaponNeed(cell) {
+  return splitList(cell).map(x => x.trim()).filter(Boolean).map(item => {
+    const out = { el: 0, ammo: 0, type: "" }, rest = [];
+    for (const w of item.split(/\s+/)) {
+      const k = norm(w);
+      if (!out.el && EL_BY_WORD[k]) out.el = EL_BY_WORD[k];
+      else if (!out.ammo && AMMO_BY_WORD[k]) out.ammo = AMMO_BY_WORD[k];
+      else rest.push(w);
+    }
+    out.type = rest.join(" ");
+    return out;
+  });
+}
+function plugNeed(h) {
+  const name = plugName(h), p = WEIGHT_PLUGS[norm(name)];
+  if (!p?.wn?.length) return null;
+  return { any: p.wn, label: `${p.wnText} weapon (${name})` };
+}
+/* Weapon needs of the rolled aspects and fragments. */
+function plugNeeds() {
+  const sub = state.roll.subclass && state.roll.subclass.charId === selectedChar() ? state.roll.subclass : null;
+  return sub ? [...(sub.aspects || []), ...(sub.fragments || [])].map(plugNeed).filter(Boolean) : [];
+}
+/* Every weapon need of the build: the exotic armor's, then the aspects' and fragments'. */
+const allNeeds = () => [weaponNeed(), ...plugNeeds()].filter(Boolean).map(needTest);
+
+/* After armor or subclass changes, swap weapons until every weapon need is met again. */
 function ensureWeaponNeed(rules, E = 0) {
-  const need = weaponNeed();
-  const cur = state.roll.weapons;
-  if (!need || !cur || cur.some(i => meetsNeed(i, need))) return;
-  for (const b of shuffle(WEAPON_BUCKETS)) {
-    try {
-      state.roll.weapons = rerollWeaponSlotPaired(rules, E, b, needTest(need), true);
-      log(`Swapped a weapon to add ${need.label}.`);
-      return;
-    } catch { /* try another slot */ }
+  for (const need of allNeeds()) {
+    const cur = state.roll.weapons;
+    if (!cur || cur.some(need.test)) continue;
+    let done = false;
+    for (const b of shuffle(WEAPON_BUCKETS)) {
+      try {
+        // Every need the other two slots don't meet goes to the new weapon, so a need met before stays met.
+        state.roll.weapons = rerollWeaponSlotPaired(rules, E, b, allNeeds(), true);
+        log(`Swapped a weapon to add ${need.label}.`);
+        done = true;
+        break;
+      } catch { /* try another slot */ }
+    }
+    if (!done) log(`Couldn't fit ${need.label} with the weapon rules.`);
   }
-  log(`Couldn't fit ${need.label} with the weapon rules.`);
 }
 
-/* The weapon need for a full weapon roll: the exotic's required weapons, or (rows with a "Weapon chance" whose weapons are only
-   preferred) that share of rolls; dropped with a note if no eligible weapon meets it. */
+/* The weapon needs for a full weapon roll: the exotic's required weapons, or (rows with a "Weapon chance" whose weapons are only
+   preferred) that share of rolls; then the aspects' and fragments'. A need no eligible weapon meets is dropped with a note. */
 function rollNeed(rules, E) {
   let need = weaponNeed();
   if (!need) {
     const soft = weaponNeed(true);
     if (soft?.chance && Math.random() < soft.chance) { need = soft; log(`Weapon chance: including ${soft.label}.`); }
   }
-  if (need && !weaponPool(rules, E).some(i => meetsNeed(i, need))) {
-    const why = [];
-    if (E && weaponPool(rules, 0).some(i => meetsNeed(i, need))) why.push(`${DMG_NAME[E]} Monochromatic`);
-    if (rules.guaranteedDoubleSpecial && weaponPool({ ...rules, guaranteedDoubleSpecial: false }, E).some(i => meetsNeed(i, need))) why.push("Guaranteed double special");
-    log(why.length ? `${why.join(" and ")} rules out ${need.label}; ignoring that weapon synergy.` : `You have no eligible ${need.label}; ignoring that weapon synergy.`);
-    need = null;
+  const out = [];
+  for (const n of [need, ...plugNeeds()]) {
+    if (!n) continue;
+    if (!weaponPool(rules, E).some(i => meetsNeed(i, n))) {
+      const why = [];
+      if (E && weaponPool(rules, 0).some(i => meetsNeed(i, n))) why.push(`${DMG_NAME[E]} Monochromatic`);
+      if (rules.guaranteedDoubleSpecial && weaponPool({ ...rules, guaranteedDoubleSpecial: false }, E).some(i => meetsNeed(i, n))) why.push("Guaranteed double special");
+      log(why.length ? `${why.join(" and ")} rules out ${n.label}; ignoring that weapon synergy.` : `You have no eligible ${n.label}; ignoring that weapon synergy.`);
+      continue;
+    }
+    out.push(needTest(n));
   }
-  return needTest(need);
+  return out;
+}
+
+/* A full weapon roll. If the needs can't all be met together, the aspects' and fragments' needs drop from last to first. */
+function rollWeaponsNeeds(rules, E, needs) {
+  for (let k = needs.length; ; k--) {
+    try { return rollWeaponsPaired(rules, E, needs.slice(0, k)); }
+    catch (e) {
+      if (k === 0 || !needs[k - 1].any) throw e;
+      log(`Couldn't fit ${needs[k - 1].label} with the other weapon rules; ignoring it.`);
+    }
+  }
 }
 
 /* ---------- Sturm + Together Forever ----------
@@ -413,7 +463,7 @@ function pairSturm(weapons, rules, E, need, { avoid = null, force = false, force
     const set = [...weapons.filter(i => i.def.bucket !== c.def.bucket), c];
     if (rules.noDoubleSpecial && set.filter(i => i.def.ammo === 2).length > 1) return false;
     if (!requiredChamps(rules).every(ch => set.some(i => champsOf(i).has(ch)))) return false;
-    if (need && !(forceNeed ? need.test(c) : set.some(need.test))) return false;
+    if (!needList(need).every(n => set.some(n.test))) return false;
     return true;
   };
   let cands = weaponPool(rules, E).filter(i => isSturmPartner(i) && fits(i));
@@ -876,13 +926,17 @@ async function rollSubclass(cid, exoticName, chosenInfo) {
     const hash = forced[idx] || weightedPick(choices, h => w(h) * abilityFactor(info, idx, h));
     abilities.push({ idx, hash, kind: info.groups.supers.includes(idx) ? "supers" : (plugKind(hash) || "ability") });
   }
-  const aspects = [...forcedAspects, ...weightedSample(union(aIdx).filter(h => !forcedAspects.includes(h)), aIdx.length - forcedAspects.length, w)];
+  // Aspects and fragments with a Weapon need roll only if an eligible weapon meets it (Monochromatic: this subclass's element).
+  const monoE = state.rules.mono ? resolveElement(infos, info, abilities.find(a => a.kind === "supers")?.hash || 0) || 0 : 0;
+  const pool = weaponPool(state.rules, monoE);
+  const usable = h => { const n = plugNeed(h); return !n || pool.some(i => meetsNeed(i, n)); };
+  const aspects = [...forcedAspects, ...weightedSample(union(aIdx).filter(h => !forcedAspects.includes(h) && usable(h)), aIdx.length - forcedAspects.length, w)];
   // Fragments also lean toward what the rolled aspects do.
   for (const h of aspects) for (const t of WEIGHT_PLUGS[norm(plugName(h))]?.t || []) ctx.tags.add(t);
   let cap = aspects.reduce((sum, h) => sum + (plugDef(h)?.k || 0), 0);
   const fIdx = info.groups.fragments;
   if (aspects.length && !cap) { cap = Math.min(4, fIdx.length); log("Aspect fragment capacity unavailable; assuming 4 fragments."); }
-  const fragments = weightedSample(union(fIdx), Math.min(cap, fIdx.length), w);
+  const fragments = weightedSample(union(fIdx).filter(usable), Math.min(cap, fIdx.length), w);
   const superHash = abilities.find(a => a.kind === "supers")?.hash || 0;
   for (const h of fragments) for (const t of WEIGHT_PLUGS[norm(plugName(h))]?.t || []) ctx.tags.add(t);
   return { charId: cid, info, abilities, aspects, fragments, element: resolveElement(infos, info, superHash), tags: [...ctx.tags] };
@@ -940,7 +994,12 @@ async function loadTagData() {
   };
   for (const r of table("exotic_weapons")) if (r.exotic) BUILD_WEIGHTS.exw[r.exotic] = tagList(r.tags);
   for (const r of table("exotic_armor")) if (r.exotic) BUILD_WEIGHTS.exotics[r.exotic] = { t: tagList(r.tags), m: list(r.mentions), c: r.class };
-  for (const r of table("subclass_plugs")) if (r.name) BUILD_WEIGHTS.plugs[r.name] = { k: norm(r.kind), w: tierW(r.tier, r.name), t: tagList(r.tags) };
+  for (const r of table("subclass_plugs")) {
+    if (!r.name) continue;
+    const wn = parseWeaponNeed(r["weapon need"] || "");
+    for (const x of wn) if (!x.el && !x.ammo && !x.type) problems.push(`subclass_plugs.csv: empty Weapon need item for ${r.name}`);
+    BUILD_WEIGHTS.plugs[r.name] = { k: norm(r.kind), w: tierW(r.tier, r.name), t: tagList(r.tags), wn, wnText: list(r["weapon need"] || "").join(" or ") };
+  }
   for (const r of table("set_bonuses")) {
     if (!r.set || !r.pieces) continue;
     (SET_BONUSES[r.set] ||= {})[r.pieces] = { n: r.bonus, w: tierW(r.tier, `${r.set} ${r.pieces}-piece`), t: tagList(r.tags), wt: list(r["weapon types"]) };
@@ -1448,7 +1507,7 @@ async function rerollOne(bucket) {
   await ensureChampData();
   await ensureTogetherForever();
   await ensureWeaponBalance(selectedChar(), selectedClass());
-  state.roll.weapons = rerollWeaponSlotPaired(state.rules, await weaponElement(selectedChar()), bucket, needTest(weaponNeed()));
+  state.roll.weapons = rerollWeaponSlotPaired(state.rules, await weaponElement(selectedChar()), bucket, allNeeds());
   if (state.rules.mods && state.roll.armor) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
     catch (e) { log("Couldn't plan mods: " + e.message); }
@@ -1508,7 +1567,7 @@ async function doRoll({ subclass, weapons, armor }) {
     log("Weapons don't match the new subclass element; rerolling weapons.");
     weapons = true;
   }
-  if (weapons) state.roll.weapons = rollWeaponsPaired(rules, E, rollNeed(rules, E));
+  if (weapons) state.roll.weapons = rollWeaponsNeeds(rules, E, rollNeed(rules, E));
   else if (armor || subclass) ensureWeaponNeed(rules, E);
   if (armorExotic) state.roll.armor = await rollArmor(rules, cls, armorExotic);
   state.roll.mods = null;

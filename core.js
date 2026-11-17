@@ -669,8 +669,9 @@ function checkChampPool(rules, pool) {
 /* Complete search for a weapon loadout, used when the random attempts in rollWeapons all fail.
    Finds a valid loadout whenever one exists (within a generous step limit). Copies that behave the same
    (name, champion stuns, element) are tried once. orderNames(names) gives the order names are tried in (random or weighted), so the
-   result stays random. need (build.html only) is an optional { test(item) } that one weapon must pass. */
+   result stays random. need (build.html only): see needList. */
 function searchWeapons(rules, pool, champs, need, orderNames) {
+  const needs = needList(need);
   const groups = {};
   for (const b of WEAPON_BUCKETS) {
     const byKey = new Map();
@@ -694,7 +695,7 @@ function searchWeapons(rules, pool, champs, need, orderNames) {
     return {
       exo: gs.some(g => isExo(g[0])),
       champs: new Set(gs.flatMap(g => [...champsOf(g[0])])),
-      need: need ? gs.some(g => g.some(need.test)) : false,
+      needs: needs.map(n => gs.some(g => g.some(n.test))),
     };
   });
   let budget = 300000;
@@ -704,12 +705,12 @@ function searchWeapons(rules, pool, champs, need, orderNames) {
     if (--budget < 0) return false;
     const covered = new Set(picks.flatMap(i => [...champsOf(i)]));
     const missing = champs.filter(c => !covered.has(c));
-    const needMet = !need || picks.some(need.test);
-    if (k === buckets.length) return !missing.length && needMet && (!rules.guaranteedExoticWeapon || exo);
+    const unmet = needs.map(n => !picks.some(n.test));
+    if (k === buckets.length) return !missing.length && !unmet.some(Boolean) && (!rules.guaranteedExoticWeapon || exo);
     const can = canStill[k];
     if (rules.guaranteedExoticWeapon && !exo && !can.exo) return false;
     if (missing.some(c => !can.champs.has(c))) return false;
-    if (!needMet && !can.need) return false;
+    if (unmet.some((u, j) => u && !can.needs[j])) return false;
     for (const g of groups[buckets[k]]) {
       const i = g[0];
       if (exo && isExo(i)) continue;
@@ -754,11 +755,14 @@ function weaponPool(rules, E) {
 /* ---------- weapon rolling (both pages) ----------
    A page can set PAGE.pickWeapon(cands) to choose among candidates (build.html: weighted by synergy; default: every name
    equally likely) and PAGE.weaponSearchOrder(pool) to order names for the complete search (default: random).
-   need (build.html only) is an optional { test(item), label, prefer(item) } that one weapon must pass; prefer, if set,
-   multiplies the weights of the weapon picked to meet it. */
+   need (build.html only) is an optional { test(item), label, prefer(item) } that one weapon must pass, or a list of them, each met by
+   some weapon (one weapon can meet several); prefer, if set, multiplies the weights of the weapon picked to meet it. */
 const pickWeapon = (cands, need) => (PAGE.pickWeapon || pickByName)(cands, need);
+const needList = need => !need ? [] : Array.isArray(need) ? need.filter(Boolean) : [need];
+const needLabel = need => needList(need).map(n => n.label).join(" and ");
 
-/* Reroll one weapon slot, keeping the other two and all weapon rules. forceNeed: the new weapon must meet need. */
+/* Reroll one weapon slot, keeping the other two and all weapon rules. Needs the other two don't meet are met by the new weapon
+   when some candidate can; forceNeed: always (no candidate means no reroll). */
 function rerollWeaponSlot(rules, E, bucket, need = null, forceNeed = false) {
   const cur = state.roll.weapons || [];
   const old = cur.find(i => i.def.bucket === bucket);
@@ -776,8 +780,9 @@ function rerollWeaponSlot(rules, E, bucket, need = null, forceNeed = false) {
     cands = cands.filter(i => champMissing.every(c => champsOf(i).has(c)));
     if (!cands.length) throw new Error(`No ${SLOT_NAME[bucket]} weapon stuns ${champList(champMissing)} alongside the other two weapons.`);
   }
-  if (need && (forceNeed || !fixed.some(need.test))) {
-    const m = cands.filter(need.test);
+  for (const n of needList(need)) {
+    if (fixed.some(n.test)) continue;
+    const m = cands.filter(n.test);
     if (m.length || forceNeed) cands = m;
   }
   if (!cands.length) throw new Error(`No other ${SLOT_NAME[bucket]} weapon fits the rules with the other two weapons.`);
@@ -797,7 +802,13 @@ function rollWeapons(rules, E, need = null) {
     let exo = false, ok = true;
     const take = i => { picks[i.def.bucket] = i; ammo[i.def.ammo]++; if (isExo(i)) exo = true; };
     const ammoOK = i => !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1]) && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]);
-    if (need) take(pickWeapon(pool.filter(need.test), need)); // need.prefer (build.html) can favor some of them
+    for (const n of needList(need)) { // n.prefer (build.html) can favor some of them
+      if (Object.values(picks).some(n.test)) continue;
+      const p = pickWeapon(pool.filter(i => n.test(i) && !picks[i.def.bucket] && ammoOK(i) && (!exo || !isExo(i))), n);
+      if (!p) { ok = false; break; }
+      take(p);
+    }
+    if (!ok) continue;
     if (rules.guaranteedExoticWeapon && !exo) {
       const ex = pool.filter(i => isExo(i) && !picks[i.def.bucket] && ammoOK(i));
       if (!ex.length) continue;
@@ -815,7 +826,7 @@ function rollWeapons(rules, E, need = null) {
   // Random attempts can miss a narrow valid combination; search all of them before giving up.
   const found = searchWeapons(rules, pool, champs, need, PAGE.weaponSearchOrder ? PAGE.weaponSearchOrder(pool) : shuffle);
   if (found) return found;
-  throw new Error("Couldn't build a weapon loadout that meets the rules" + (need ? ` with ${need.label}` : "") + (champs.length ? ` stunning ${champList(champs)}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
+  throw new Error("Couldn't build a weapon loadout that meets the rules" + (needList(need).length ? ` with ${needLabel(need)}` : "") + (champs.length ? ` stunning ${champList(champs)}` : "") + (E ? ` (${DMG_NAME[E]} Monochromatic)` : "") + ".");
 }
 
 /* ---------- rendering ---------- */

@@ -27,8 +27,8 @@ Everything runs in the visitor's browser: HTML is layout, CSS is styling, all lo
 ## core.js
 
 - `PAGE` hooks: `rulesKey`, `defaultRules`, `forcedRules`, `extraState`, `busyIds`, `returnTo`, `renderExtra`, `equipExtra`, `updateButtons`, `pickWeapon`, `weaponSearchOrder`.
-- Pages load `core.js?v=4`. Bump the number on both pages whenever `core.js` changes, or browsers may pair a new page with an old cached `core.js` for up to 10 minutes.
-- Weapon rolling (`rollWeapons`, `rerollWeaponSlot`) is shared. `build.html` plugs in weighted picks (`PAGE.pickWeapon(cands, need)`) and an optional weapon need (`{ test(item), label, prefer(item) }`; `prefer` multiplies weights for the weapon picked to meet the need); `index.html` uses the defaults.
+- Pages load `core.js?v=5`. Bump the number on both pages whenever `core.js` changes, or browsers may pair a new page with an old cached `core.js` for up to 10 minutes.
+- Weapon rolling (`rollWeapons`, `rerollWeaponSlot`) is shared. `build.html` plugs in weighted picks (`PAGE.pickWeapon(cands, need)`) and optional weapon needs (`{ test(item), label, prefer(item) }`, or a list of them, each met by some weapon; one weapon can meet several; `prefer` multiplies weights for the weapon picked to meet the need); `index.html` uses the defaults.
 - Sign-in: public OAuth client, so tokens last about an hour and can't be refreshed; a 401 shows the sign-in button. The API key in `CONFIG` is public by necessity and is Origin-restricted in the Bungie portal.
 - Caches: IndexedDB database `d2srl`, store `kv`: item definitions (`defs_<SLIM_VERSION>_<manifest>`), per-item lookups (`ent_…`), Collections sources (`src_…`), exotic weapon balance factors (`wbal<BALANCE_VERSION>_<class>_…`). localStorage: `d2r_token`, `d2r_rules` (index), `d2b_rules` (build), `d2r_off_w` / `d2r_off_a` (exotic lists).
 - Equipping verifies from each action's response (equipStatus 1 = success), not from a profile read, because Bungie's profile lags behind changes.
@@ -59,6 +59,7 @@ Everything runs in the visitor's browser: HTML is layout, CSS is styling, all lo
   - Jumps have no tags.
   - Supers carry no "super", "resist" or "airborne" tag; no grenade, melee or class ability carries its own slot's tag. "super", "grenade", "melee" and "class" stay on aspects, fragments and exotic armor, where they mean something.
   - Rejected: volatile/freeze/shatter/tangle on Feed the Void; crystal/shatter on Consecration; invis on Weavewalk.
+- Spark of Beacons: rolls only with an Arc special or heavy weapon (`subclass_plugs.csv` column Weapon need = "Arc Special, Arc Heavy"). Any aspect or fragment can use the column. A plug with a Weapon need is left out of the subclass roll unless an eligible weapon meets it (Monochromatic: that subclass's element). Its need sits alongside the exotic's need; if both can't be met together, the plug's need is dropped with a log note. Exotic weapon balancing ignores plug weapon needs.
 - Declined: a slot-and-ammo correction in weapon balancing; an exotic-share column to make Triton Vice pick exotic glaives less often.
 - `index.html`: the "Randomize subclass in Roll all" setting was removed; Roll all always rolls the subclass. Rolling the subclass no longer rerolls weapons that clash with Monochromatic.
 
@@ -78,7 +79,7 @@ python3 tools/sim/simulate.py [presses] [output folder]
 
 Defaults: 60,000 presses (split evenly across classes) and `tools/sim/out/` (ignored by git). Takes about 20 s per 50,000 presses. It reads `data/*.csv` and writes `subclasses.csv`, `exotic_armor.csv`, `exotic_weapons.csv`, `aspects.csv`, `fragments.csv` and `abilities.csv` (percent of that class's or class-and-subclass's rolls).
 
-It mirrors build.html's "Roll build" with every exotic and subclass item owned: subclass balancing, synergy rules (incl. Or weapon share and Weapon chance), ability balancing, aspect/fragment tag weighting and stratified exotic weapon balancing. Legendary weapons are stand-ins (5 per weapon type) with no element, so Weapon element needs (Foetracer, Verity's Brow, Mantle of Battle Harmony) and Preferred ammo aren't modeled; nor is the Sturm pairing. If you change the rolling or balancing code in `build.html`, change the simulation to match.
+It mirrors build.html's "Roll build" with every exotic and subclass item owned: subclass balancing, synergy rules (incl. Or weapon share and Weapon chance), ability balancing, aspect/fragment tag weighting and stratified exotic weapon balancing. Legendary weapons are stand-ins (5 per weapon type) with no element, so Weapon element needs (Foetracer, Verity's Brow, Mantle of Battle Harmony), aspect/fragment Weapon needs (Spark of Beacons) and Preferred ammo aren't modeled; nor is the Sturm pairing. If you change the rolling or balancing code in `build.html`, change the simulation to match.
 
 ### Parity check
 
@@ -96,7 +97,7 @@ Reads the simulation's output and, per class, checks every rate against an even 
 cd tools/tests && npm install && npm test
 ```
 
-jsdom loads the real pages with a mocked Bungie API and fake IndexedDB. The suites cover booting and definition caching, weapon rules and the complete weapon search, Postmaster pulls, equip verification and refused equips, sign-in expiry, rule storage, section-only rolls on index.html, partial-roll gating, weapon type matching, tag/CSV loading (`tag-data.test.js` also compares with the original baked-in data at commit ae8056e), Or weapon share, Weapon chance, Foetracer's weapon element and heavy preference, Sturm pairing, weapon and ability balancing, partial-roll gating, and the caches. The weapon-balance and ability-balance suites check rates, so they're statistical; rerun once before treating a single failure as real. Run them after any change to the pages or `core.js`.
+jsdom loads the real pages with a mocked Bungie API and fake IndexedDB. The suites cover booting and definition caching, weapon rules and the complete weapon search, Postmaster pulls, equip verification and refused equips, sign-in expiry, rule storage, section-only rolls on index.html, partial-roll gating, weapon type matching, tag/CSV loading (`tag-data.test.js` also compares with the original baked-in data at commit ae8056e), Or weapon share, Weapon chance, Foetracer's weapon element and heavy preference, aspect/fragment weapon needs (Spark of Beacons), Sturm pairing, weapon and ability balancing, partial-roll gating, and the caches. The weapon-balance and ability-balance suites check rates, so they're statistical; rerun once before treating a single failure as real. Run them after any change to the pages or `core.js`.
 
 ## Artifacts outside the repo
 
