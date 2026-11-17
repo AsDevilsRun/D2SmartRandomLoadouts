@@ -70,7 +70,7 @@ Slayer Baron Apothecary Satchel,Hail The Storm,II,A,"crystal, shatter, slow",,,,
 Slayer Baron Apothecary Satchel,Supernova,III,B,"breach, weaken",,,,,,Void Breach pickup => next void damage within 10s creates 5?m weaken burst
 Slayer Baron Apothecary Satchel,Total Carnage,I,A,"heal, resist",,,,,Finisher,"elite+ finisher => Resist x2 for 11s, 100 HP, starts health regen"
 Slayer Baron Apothecary Satchel,Debilitating Wave,II,B,"blind, weaken, slow",,,,,Finisher,"finisher => 15m 180 super-matched wave, blind/weaken/slow if on arc/void/stasis"
-Slayer Baron Apothecary Satchel,Conductive Cosmic Crystal,III,B,"slow, freeze, grenade, melee",,,,,Arc and Void ability damage,stasis-debuffed enemy => 5% arc and void ability damage
+Slayer Baron Apothecary Satchel,Conductive Cosmic Crystal,III,B,"slow, freeze, grenade, melee",,,,"Arc grenade, Arc melee, Arc super, Void grenade, Void melee, Void super",Arc and Void ability damage,stasis-debuffed enemy => 5% arc and void ability damage
 Slayer Baron Apothecary Satchel,Power from Pain,I,B,"weaken, devour, breach",,,,,,"3 consecutive weakened kills within 4s of each (weaken on killing blow counts) => Devour for 5-7.5s, Void Breach"
 Slayer Baron Apothecary Satchel,Weakened Clear,II,B,weaken,Grenade Launcher,,,,,"boss/champ GL damage or GL enemy shield break => 15% weaken for 20?s, non-refreshable, non-extensible, refills stowed weapons (10?s ICD)"
 Slayer Baron Apothecary Satchel,Served Cold,III,B,"shard, breach, class, melee",,,,,,Stasis Shard pickup Void Breach pickup => 10% class energy 10% melee energy
@@ -127,7 +127,7 @@ Queensfoil Censer,Perpetual Destruction,II,A,,Rocket Launcher,,,,Non-exotic rock
 Queensfoil Censer,To Shreds,III,A,"sever, unravel, wovenmail",,,,,,6 severed weapon damage instances severed kill => inflicts unravel makes Into the Fray triple Woven Mail + 15 HP pulses on kill location
 NPA Repulsion Regulator,Improved Unraveling,I,C,unravel,,,,,,passive => 15% unraveling thread damage
 NPA Repulsion Regulator,Strand Soldier,II,C,"wovenmail, unravel",,,Strand,,,Woven Mail on strand => Unraveling Rounds for 8s
-NPA Repulsion Regulator,Conductive Cosmic Needle,III,B,"sever, suspend, unravel, grenade, melee",,,,,Arc and Void ability damage,strand-debuffed enemy => 5% arc and void ability damage
+NPA Repulsion Regulator,Conductive Cosmic Needle,III,B,"sever, suspend, unravel, grenade, melee",,,,"Arc grenade, Arc melee, Arc super, Void grenade, Void melee, Void super",Arc and Void ability damage,strand-debuffed enemy => 5% arc and void ability damage
 NPA Repulsion Regulator,Volatile Flow,I,A,"orb, volatile",,,,,,orb pickup => Volatile Rounds for 9s
 NPA Repulsion Regulator,Suppressing Glaive,II,A,suppress,Glaive,,,,,glaive projectile damage => Suppression for 10s
 NPA Repulsion Regulator,Shock and Awe,III,B,"amplified, jolt",,,"Arc, Prismatic",,,"Amplified arc kill with arc or Prismatic equipped => 8m jolting 126 damage arc burst, 5s ICD"

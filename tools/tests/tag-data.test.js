@@ -16,7 +16,8 @@ const { execSync } = require("child_process");
   const orig = execSync(`git -C "${require("path").resolve(__dirname, "..", "..")}" show ae8056e:build.html`).toString();
   const O = JSON.parse(orig.match(/const BUILD_WEIGHTS = (\{.*?\});\n/s)[1]);
   const OS = JSON.parse(orig.match(/const SET_BONUSES = (\{.*?\});\n/s)[1]);
-  assert.deepEqual(got.bw.tagw, O.tagw);
+  // armorcharge was added later for artifact perks (data/artifact_perks.csv).
+  assert.deepEqual(got.bw.tagw, { ...O.tagw, armorcharge: 2 });
   // subclass plug tags were deliberately cleaned up (commit ea58140), so they're no longer compared with the original.
   assert.deepEqual(got.sb, OS);
   const ren = { "Loreley Splendor": "Loreley Splendor Helm", "Promethium Spurs": "Promethium Spur" };

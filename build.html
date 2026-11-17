@@ -106,6 +106,7 @@
           <label><input type="checkbox" data-rule="guaranteedExoticWeapon"> Guaranteed exotic weapon</label>
           <label><input type="checkbox" data-rule="mono"> Monochromatic <span class="muted">(weapons match the subclass element; Prismatic matches the super)</span></label>
           <label><input type="checkbox" data-rule="unownedExotics"> Include unowned exotic weapons (pull from Collections)</label>
+          <label><input type="checkbox" data-rule="artifact"> Roll and apply the artifact <span class="muted">(picked last, to fit the build)</span></label>
           <label><input type="checkbox" data-rule="mods"> Apply mods <span class="muted">(slow: each mod is a separate change sent through Bungie to the game, so a full set can add a minute or more to Equip)</span></label>
         </div>
         <fieldset class="champs">
@@ -125,6 +126,8 @@
     </div>
 
     <div class="card"><h2>Mods</h2><table id="modTable"></table></div>
+
+    <div class="card"><h2 class="boxhead">Artifact <button id="btnRollArtifact" class="small">Reroll artifact</button></h2><table id="artifactTable"></table></div>
 
     <div class="card">
       <h2>DIM search</h2>
@@ -168,11 +171,11 @@
 
 const PAGE = {
   rulesKey: "d2b_rules",
-  defaultRules: { unownedExotics: false, noDoublePrimary: true, noDoubleSpecial: true, guaranteedDoubleSpecial: false, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mods: true, mono: false },
+  defaultRules: { unownedExotics: false, noDoublePrimary: true, noDoubleSpecial: true, guaranteedDoubleSpecial: false, guaranteedExoticWeapon: true, guaranteedExoticArmor: true, mods: true, artifact: true, mono: false },
   forcedRules: { guaranteedExoticArmor: true },
   extraState: { sheet: null, focusMap: {} },
   returnTo: "build.html",
-  busyIds: ["btnRollArmorSub"],
+  busyIds: ["btnRollArmorSub", "btnRollArtifact"],
 };
 </script>
 <script src="core.js?v=5"></script>
@@ -986,6 +989,7 @@ async function loadTagData() {
   for (const r of table("tag_points")) if (r.tag) BUILD_WEIGHTS.tagw[norm(r.tag)] = r.points === "" || isNaN(Number(r.points)) ? 1 : Number(r.points);
   const tier = {};
   for (const r of table("tiers")) if (r.tier) tier[norm(r.tier)] = Number(r.weight);
+  BUILD_WEIGHTS.tiers = tier;
   const tierW = (t, where) => {
     if (!t) return 1;
     const w = tier[norm(t)];
@@ -1495,11 +1499,254 @@ function balanceSubclassWeights(options, infos) {
 }
 
 /* Everything except "Roll all" changes part of a build, so it needs a full build for the selected character first. */
-const PARTIAL_ROLL_IDS = ["btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRollArmorSub"];
+const PARTIAL_ROLL_IDS = ["btnRollSubclass", "btnRollWeapons", "btnRollArmor", "btnRollArmorSub", "btnRollArtifact"];
 const hasBuild = () => {
   const cid = selectedChar();
   return !!(cid && state.roll.subclass?.charId === cid && state.roll.weapons?.length && state.roll.armor?.length && state.roll.armorClass === selectedClass());
 };
+/* ---------- artifact ----------
+   Rolled last, from what the build already has; it never changes the rest of the build.
+   data/artifacts.csv: Artifact, Season, Elements, Weapon types (the artifact's focus).
+   data/artifact_perks.csv: Artifact, Perk, Column (I / II / III), Tier, Tags, Weapon types, Weapon element, Subclass, Abilities.
+   Which perk fits which slot comes from the artifact's own sockets (a slot lists the perks it takes), so the 2 / 3 / 2 slot layout
+   and "a slot takes perks of its tier or lower" aren't written down here. A perk with Weapon types / Weapon element, Subclass or
+   Abilities only rolls when the build meets them. */
+const BUCKET_ARTIFACT = 1506418338;
+const PC_ARTIFACT_PERK = 3878350949;      // plug category of artifact perks (DIM: PlugCategoryHashes.ArtifactPerks)
+const ARTIFACT_TIER_POWER = 3;            // perk weight = tier weight ^ 3 × (1 + shared tag points, capped at 6): S 8, A 4.1, B 2.2, C 1, D 0.5
+const ARTIFACT_FIT_POWER = 3;             // artifact weight = (average weight of its best perks × focus bonus) ^ 3
+const ARTIFACT_FOCUS_BONUS = 0.25;        // per focus element / weapon type (artifacts.csv) the build has
+const ART = { arts: {}, perks: {}, loaded: false };
+
+async function loadArtifactData() {
+  const text = {};
+  try {
+    for (const f of ["artifacts", "artifact_perks"]) {
+      const res = await fetch(`data/${f}.csv`, { cache: "no-cache" });
+      if (!res.ok) throw new Error(`data/${f}.csv: HTTP ${res.status}`);
+      text[f] = await res.text();
+    }
+  } catch (e) { log("Couldn't load the artifact files; no artifact will roll: " + e.message); return; }
+  const table = f => {
+    const rows = parseCSV(text[f]).filter(r => r.some(c => c.trim()));
+    const head = (rows.shift() || []).map(norm);
+    return rows.map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] || "").trim()])));
+  };
+  const els = v => splitList(v).map(x => EL_BY_WORD[norm(x)] || (norm(x) === "prismatic" ? "prism" : 0)).filter(Boolean);
+  const problems = [];
+  ART.arts = {}; ART.perks = {};
+  for (const r of table("artifacts")) if (r.artifact) ART.arts[norm(r.artifact)] = { name: r.artifact, els: els(r.elements), wt: splitList(r["weapon types"]) };
+  for (const r of table("artifact_perks")) {
+    if (!r.artifact || !r.perk) continue;
+    const tw = BUILD_WEIGHTS.tiers?.[norm(r.tier)];
+    if (tw == null) problems.push(`unknown tier "${r.tier}" (${r.perk})`);
+    const abil = splitList(r.abilities).map(x => {
+      const m = norm(x).match(/^(\w+) (grenade|melee|super|class)$/);
+      return m && EL_BY_WORD[m[1]] ? { el: EL_BY_WORD[m[1]], slot: m[2] } : { name: norm(x) };
+    });
+    const tags = splitList(r.tags).map(norm);
+    for (const t of tags) if (!(t in BUILD_WEIGHTS.tagw)) problems.push(`tag "${t}" not in tag_points.csv (${r.perk})`);
+    (ART.perks[norm(r.artifact)] ||= {})[norm(r.perk)] = {
+      name: r.perk, col: r.column, tw: tw ?? 1, tags,
+      types: splitList(r["weapon types"]), els: els(r["weapon element"]).filter(e => e !== "prism"),
+      sub: els(r.subclass), abil,
+    };
+  }
+  ART.loaded = true;
+  log(`Artifact data loaded: ${Object.keys(ART.arts).length} artifacts, ${Object.values(ART.perks).reduce((s, p) => s + Object.keys(p).length, 0)} perks.`);
+  if (problems.length) log("Artifact data warnings: " + problems.join("; ") + ".");
+}
+
+/* The character's artifacts with their perk slots: [{ item, name, icon, sockets: [{ idx, empty, options }], cur }].
+   Read fresh from Bungie on each call (sockets included); definitions are cached like other lookups. */
+async function loadArtifacts(cid) {
+  const m = state.membership;
+  const r = await bungie(`/Destiny2/${m.type}/Profile/${m.id}/?components=102,201,205,305`);
+  const found = new Map();
+  const add = (it, equipped) => {
+    if (it.bucketHash !== BUCKET_ARTIFACT || !it.itemInstanceId) return;
+    if (!found.has(it.itemHash) || equipped) found.set(it.itemHash, { id: it.itemInstanceId, hash: it.itemHash, owner: cid, equipped });
+  };
+  for (const it of r.profileInventory?.data?.items || []) add(it, false);
+  for (const it of r.characterInventories?.data?.[cid]?.items || []) add(it, false);
+  for (const it of r.characterEquipment?.data?.[cid]?.items || []) add(it, true);
+  const items = [...found.values()];
+  if (!items.length) return [];
+  await fetchEntities("af", items.map(i => i.hash), d => ({
+    n: d.displayProperties?.name || "", i: d.displayProperties?.icon || "",
+    e: (d.sockets?.socketEntries || []).map(s => ({ i: s.singleInitialItemHash || 0, r: s.reusablePlugSetHash || 0, ri: (s.reusablePlugItems || []).map(p => p.plugItemHash) })),
+  }));
+  const defs = items.map(i => entCache.data["af" + i.hash]).filter(Boolean);
+  await fetchEntities("ps", defs.flatMap(d => d.e.map(e => e.r)), d => (d.reusablePlugItems || []).map(p => p.plugItemHash), "DestinyPlugSetDefinition");
+  await fetchEntities("p", defs.flatMap(d => d.e.flatMap(e => [e.i, ...e.ri, ...(entCache.data["ps" + e.r] || [])])), slimPlug);
+  const sockets = r.itemComponents?.sockets?.data || {};
+  return items.map(item => {
+    const def = entCache.data["af" + item.hash];
+    if (!def) return null;
+    const slots = def.e.map((e, idx) => ({ idx, empty: e.i,
+      options: [...new Set([...(entCache.data["ps" + e.r] || []), ...e.ri])].filter(h => plugDef(h)?.ch === PC_ARTIFACT_PERK && !isEmptyPlug(h)) }))
+      .filter(s => s.options.length);
+    return { item, name: def.n, icon: def.i, sockets: slots, cur: (sockets[item.id]?.sockets || []).map(x => x.plugHash || 0) };
+  }).filter(a => a && a.sockets.length);
+}
+
+/* Does a set of perk hashes fit the slots (each perk in its own slot that takes it)? Returns slot index -> hash, or null.
+   fixed: slot index -> hash to keep where possible. */
+function matchPerks(sockets, hashes, fixed = {}) {
+  const tryMatch = keep => {
+    const at = {}, owner = {}, locked = new Set();   // slot idx -> hash, hash -> slot idx; locked: kept slots
+    for (const s of sockets) {
+      const h = keep[s.idx];
+      if (h && hashes.includes(h) && owner[h] == null && s.options.includes(h)) { at[s.idx] = h; owner[h] = s.idx; locked.add(s.idx); }
+    }
+    const aug = (h, seen) => {
+      for (const s of sockets) {
+        if (!s.options.includes(h) || seen.has(s.idx) || locked.has(s.idx)) continue;
+        seen.add(s.idx);
+        if (at[s.idx] == null || aug(at[s.idx], seen)) { at[s.idx] = h; owner[h] = s.idx; return true; }
+      }
+      return false;
+    };
+    for (const h of hashes) if (owner[h] == null && !aug(h, new Set())) return null;
+    return at;
+  };
+  return tryMatch(fixed) || (Object.keys(fixed).length ? tryMatch({}) : null);
+}
+
+/* What the build offers an artifact perk: subclass, abilities, weapons and tags. */
+function artifactContext() {
+  const cid = selectedChar();
+  const sub = state.roll.subclass?.charId === cid ? state.roll.subclass : null;
+  const weapons = state.roll.weapons || [];
+  const tags = new Set(sub?.tags || []);
+  for (const w of weapons) if (isExo(w)) for (const t of exwTags(w.def.name)) tags.add(t);
+  return { sub, weapons, tags, prism: !!sub && isPrismaticRoll(sub), subEl: sub ? (isPrismaticRoll(sub) ? "prism" : sub.info?.element) : 0 };
+}
+
+function perkMeets(p, ctx) {
+  if (p.types.length || p.els.length) {
+    const ok = ctx.weapons.some(i => (!p.types.length || p.types.some(t => weaponTypeKey(t) === weaponTypeKey(i.def.typeName || "")))
+      && (!p.els.length || p.els.includes(i.dmg)));
+    if (!ok) return false;
+  }
+  if (p.sub.length && !p.sub.includes(ctx.subEl)) return false;
+  if (p.abil.length) {
+    const abil = ctx.sub?.abilities || [];
+    const ok = p.abil.some(a => a.name ? abil.some(x => norm(plugName(x.hash)) === a.name)
+      : rolledAbilityElement(a.slot === "class" ? "subclass" : a.slot) === a.el);
+    if (!ok) return false;
+  }
+  return true;
+}
+
+function perkWeight(p, tags) {
+  const pts = p.tags.reduce((s, t) => s + (tags.has(t) ? (BUILD_WEIGHTS.tagw[t] || 1) : 0), 0);
+  return Math.pow(p.tw, ARTIFACT_TIER_POWER) * (1 + Math.min(pts, 6));
+}
+
+/* Perks for one artifact: weighted picks one at a time, each keeping the set placeable; each pick's tags count for the next.
+   best = true takes the heaviest perk each time (used to judge how well the artifact fits). */
+function pickArtifactPerks(art, ctx, best = false) {
+  const table = ART.perks[norm(art.name)] || {};
+  const unknown = new Set();
+  const all = [...new Set(art.sockets.flatMap(s => s.options))].map(h => {
+    const p = table[norm(plugName(h))];
+    if (!p) unknown.add(plugName(h));
+    return { h, p: p || { name: plugName(h), tw: 1, tags: [], types: [], els: [], sub: [], abil: [] } };
+  }).filter(x => perkMeets(x.p, ctx));
+  const tags = new Set(ctx.tags), chosen = [];
+  while (chosen.length < art.sockets.length) {
+    const hs = chosen.map(x => x.h);
+    const cands = all.filter(x => !hs.includes(x.h) && matchPerks(art.sockets, [...hs, x.h]));
+    if (!cands.length) break;
+    const w = x => perkWeight(x.p, tags);
+    const next = best ? cands.reduce((a, b) => (w(b) > w(a) ? b : a)) : weightedPick(cands, w);
+    chosen.push({ ...next, w: w(next) });
+    for (const t of next.p.tags) tags.add(t);
+  }
+  return { chosen, unknown };
+}
+
+function artifactWeight(art, ctx) {
+  const { chosen } = pickArtifactPerks(art, ctx, true);
+  if (!chosen.length) return 0;
+  const fit = chosen.reduce((s, x) => s + x.w, 0) / art.sockets.length;
+  const focus = ART.arts[norm(art.name)];
+  let matches = 0;
+  if (focus) {
+    if (ctx.subEl && focus.els.includes(ctx.subEl)) matches++;
+    const types = new Set(ctx.weapons.map(i => weaponTypeKey(i.def.typeName || "")));
+    for (const t of focus.wt) if (types.has(weaponTypeKey(t))) matches++;
+  }
+  return Math.pow(fit * (1 + ARTIFACT_FOCUS_BONUS * matches), ARTIFACT_FIT_POWER);
+}
+
+async function rollArtifact(cid) {
+  if (!ART.loaded) return null;
+  const arts = await loadArtifacts(cid);
+  if (!arts.length) { log("No artifacts found on this character."); return null; }
+  const ctx = artifactContext();
+  const ws = new Map(arts.map(a => [a, artifactWeight(a, ctx)]));
+  const art = weightedPick(arts.filter(a => ws.get(a) > 0), a => ws.get(a));
+  if (!art) { log("No artifact perks fit this build."); return null; }
+  const { chosen, unknown } = pickArtifactPerks(art, ctx);
+  if (unknown.size) log(`${art.name}: perks not in artifact_perks.csv (tier C, no tags): ${[...unknown].join(", ")}.`);
+  const fixed = {};
+  for (const s of art.sockets) if (art.cur[s.idx]) fixed[s.idx] = art.cur[s.idx];
+  const at = matchPerks(art.sockets, chosen.map(x => x.h), fixed) || {};
+  const perks = art.sockets.filter(s => at[s.idx]).map(s => {
+    const x = chosen.find(c => c.h === at[s.idx]);
+    return { idx: s.idx, hash: at[s.idx], name: x.p.name, col: x.p.col || "" };
+  });
+  if (perks.length < art.sockets.length) log(`${art.name}: only ${perks.length} of ${art.sockets.length} slots have a perk that fits this build.`);
+  return { charId: cid, art, perks };
+}
+
+/* Equip the artifact if needed, then plug the perks. Perks already in their slot stay; a wanted perk sitting in another slot is
+   cleared out of it first, since a perk can only be in one slot. */
+async function applyArtifact(roll, cid) {
+  const m = state.membership;
+  const problems = [];
+  const art = (await loadArtifacts(cid)).find(a => a.item.hash === roll.art.item.hash) || roll.art;
+  if (!art.item.equipped) {
+    try {
+      await bungie("/Destiny2/Actions/Items/EquipItem/", { method: "POST", body: { itemId: art.item.id, characterId: cid, membershipType: m.type } });
+    } catch (e) { problems.push(`${art.name} not equipped (${e.message})`); return problems; }
+  }
+  const cur = art.cur.slice();
+  const want = Object.fromEntries(roll.perks.map(p => [p.idx, p.hash]));
+  const errors = {};
+  const insert = async (idx, hash) => {
+    try {
+      await socketGap();
+      const res = await bungie("/Destiny2/Actions/Items/InsertSocketPlugFree/", {
+        method: "POST",
+        body: { plug: { socketIndex: idx, socketArrayType: 0, plugItemHash: hash }, itemId: art.item.id, characterId: cid, membershipType: m.type },
+      });
+      const sk = res?.item?.sockets?.data?.sockets;
+      if (sk) sk.forEach((x, i) => { cur[i] = x.plugHash || 0; }); else cur[idx] = hash;
+    } catch (e) {
+      if (/SocketAlreadyHasPlug/i.test(e.message)) cur[idx] = hash; else errors[idx] = e.message;
+    }
+  };
+  const wanted = new Set(Object.values(want));
+  for (const s of art.sockets) {
+    if (cur[s.idx] && wanted.has(cur[s.idx]) && want[s.idx] !== cur[s.idx] && s.empty) await insert(s.idx, s.empty);
+  }
+  for (const [idx, h] of Object.entries(want)) if (cur[idx] !== h) await insert(+idx, h);
+  for (const p of roll.perks) if (cur[p.idx] !== p.hash) problems.push(`${p.name}${errors[p.idx] ? ` (${errors[p.idx]})` : ""}`);
+  roll.cur = cur;
+  if (problems.length) log("Artifact — not applied: " + problems.join("; "));
+  else log(`Artifact applied: ${art.name}.`);
+  return problems;
+}
+
+async function rerollArtifact() {
+  if (!state.rules.artifact) { state.roll.artifact = null; return; }
+  try { state.roll.artifact = await rollArtifact(selectedChar()); }
+  catch (e) { state.roll.artifact = null; log("Couldn't roll the artifact: " + e.message); }
+}
+
 function requireBuild() { if (!hasBuild()) throw new Error('Roll a full build first ("Roll all").'); }
 
 async function rerollOne(bucket) {
@@ -1512,6 +1759,7 @@ async function rerollOne(bucket) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
     catch (e) { log("Couldn't plan mods: " + e.message); }
   }
+  await rerollArtifact();
   renderRoll();
 }
 
@@ -1575,6 +1823,7 @@ async function doRoll({ subclass, weapons, armor }) {
     try { state.roll.mods = await planMods(state.roll.weapons, state.roll.armor); }
     catch (e) { log("Couldn't plan mods: " + e.message); }
   }
+  await rerollArtifact(); // last: it fits whatever the build now is
   renderRoll();
 }
 
@@ -1584,6 +1833,7 @@ function wire() {
   $("btnRollWeapons").onclick = () => busy(() => doRoll({ weapons: true }));
   $("btnRollArmor").onclick = () => busy(() => doRoll({ armor: "only" }));
   $("btnRollArmorSub").onclick = () => busy(() => doRoll({ armor: true }));
+  $("btnRollArtifact").onclick = () => busy(async () => { requireBuild(); await rerollArtifact(); renderRoll(); });
   wireCommon();
 }
 
@@ -1607,6 +1857,7 @@ PAGE.weaponSearchOrder = pool => {
 };
 
 PAGE.renderExtra = () => {
+  renderArtifact();
   const mt = $("modTable"); mt.replaceChildren();
   for (const plan of state.roll.mods || []) {
     const tr = document.createElement("tr");
@@ -1631,11 +1882,40 @@ PAGE.renderExtra = () => {
   }
 };
 
-/* Mods go on after weapons, armor and subclass. */
+function renderArtifact() {
+  const t = $("artifactTable"); t.replaceChildren();
+  const a = state.roll.artifact;
+  if (!a || a.charId !== selectedChar()) return;
+  const row = (label, hash, text) => {
+    const tr = document.createElement("tr");
+    const l = document.createElement("td"); l.className = "label"; l.textContent = label;
+    const v = document.createElement("td"); v.className = "icons";
+    const icon = hash ? plugDef(hash)?.i : a.art.icon;
+    if (icon) { const img = document.createElement("img"); img.src = BUNGIE + icon; img.alt = ""; v.append(img); }
+    v.append(document.createTextNode(text));
+    tr.append(l, v); t.append(tr);
+  };
+  row("Artifact", 0, a.art.name);
+  for (const p of a.perks) row(`Perk${p.col ? " (" + p.col + ")" : ""}`, p.hash, p.name);
+}
+
+/* Then the artifact, then mods, after weapons, armor and subclass. */
 PAGE.equipExtra = (cid, cls, toast) => {
-  if (!(state.rules.mods && state.roll.mods && state.roll.armorClass === cls)) return null;
-  toast.icons(state.roll.mods.flatMap(plan => plan.placed.map(pl => ({ key: "mod:" + plan.item.id + ":" + pl.idx, icon: plugDef(pl.hash)?.i, name: pl.name }))));
+  const art = state.rules.artifact && state.roll.artifact?.charId === cid ? state.roll.artifact : null;
+  const mods = state.rules.mods && state.roll.mods && state.roll.armorClass === cls;
+  if (!art && !mods) return null;
+  if (art) toast.icons([{ key: "artifact", icon: art.art.icon, name: art.art.name }, ...art.perks.map(p => ({ key: "art:" + p.idx, icon: plugDef(p.hash)?.i, name: p.name }))]);
+  if (mods) toast.icons(state.roll.mods.flatMap(plan => plan.placed.map(pl => ({ key: "mod:" + plan.item.id + ":" + pl.idx, icon: plugDef(pl.hash)?.i, name: pl.name }))));
   return async problems => {
+    if (art) {
+      toast.phase("Applying artifact");
+      let ap;
+      try { ap = await applyArtifact(art, cid); } catch (e) { ap = [e.message]; }
+      toast.mark("artifact", !ap.some(p => p.includes("not equipped")));
+      for (const p of art.perks) toast.mark("art:" + p.idx, (art.cur || [])[p.idx] === p.hash);
+      problems.push(...ap.map(p => "Artifact: " + p));
+    }
+    if (!mods) return;
     toast.phase("Applying mods");
     try { await applyMods(state.roll.mods, cid); } catch (e) { problems.push("Mods: " + e.message); }
     for (const plan of state.roll.mods) for (const pl of plan.placed) {
@@ -1649,6 +1929,7 @@ PAGE.equipExtra = (cid, cls, toast) => {
 wire();
 init(async () => {
   await loadTagData();
+  await loadArtifactData();
   log("Loading your synergy sheet…");
   await loadSheet();
 });

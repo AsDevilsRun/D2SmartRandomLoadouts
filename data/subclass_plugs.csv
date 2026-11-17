@@ -1,4 +1,4 @@
-Name,Kind,Tier,Tags
+Name,Kind,Tier,Tags,Weapon need
 Arc Soul,aspect,C,amplified
 Ascension,aspect,A,"airborne, amplified, jolt"
 Banner of War,aspect,B,"melee, super"
@@ -113,7 +113,7 @@ Facet of Ruin,fragment,C,"crystal, ignition, shatter"
 Facet of Sacrifice,fragment,C,transcend
 Facet of Solitude,fragment,B,"sever, transcend"
 Spark of Amplitude,fragment,C,"amplified, orb, super"
-Spark of Beacons,fragment,A,"amplified, blind, weapon"
+Spark of Beacons,fragment,A,"amplified, blind, weapon","Arc Special, Arc Heavy"
 Spark of Brilliance,fragment,D,blind
 Spark of Discharge,fragment,B,"bolt, ionic, weapon"
 Spark of Feedback,fragment,C,melee

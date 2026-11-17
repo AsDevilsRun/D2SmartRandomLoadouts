@@ -44,7 +44,18 @@ A plug, exotic weapon or set bonus gets points for each tag it shares with the b
 |---|---|---|
 | exotic_weapons.csv | Exotic, Tags | Exotic weapon weighting |
 | exotic_armor.csv | Exotic, Class, Tags, Mentions | Build tags; Mentions = aspects, fragments and abilities made 3× more likely |
-| subclass_plugs.csv | Name, Kind (aspect / fragment / ability), Tier, Tags | Aspect, fragment and ability weighting; aspect and fragment tags join the build tags |
+| subclass_plugs.csv | Name, Kind (aspect / fragment / ability), Tier, Tags, Weapon need | Aspect, fragment and ability weighting; aspect and fragment tags join the build tags. Weapon need: see below |
 | set_bonuses.csv | Set, Pieces, Bonus, Tier, Tags, Weapon types | Armor set bonus weighting (+3 points when a rolled weapon is one of the listed types) |
 | tag_points.csv | Tag, Points | Points a shared tag is worth; every tag used elsewhere must be listed here |
 | tiers.csv | Tier, Weight | Tier letter → weight (tiers from Destiny 2: Endgame Analysis) |
+
+## subclass_plugs.csv: Weapon need
+
+An aspect or fragment with a Weapon need rolls only with a weapon that meets it. List one or more items, comma-separated; a weapon meeting any one item is enough. Each item can name an element (Kinetic, Arc, Solar, Void, Stasis, Strand), an ammo type (Primary, Special, Heavy) and a weapon type, in any combination: "Arc Special, Arc Heavy" (Spark of Beacons), "Strand Sword", "Heavy". The plug is left out of the subclass roll when no eligible weapon meets its need (owned, allowed by the weapon rules and Monochromatic). The need is met alongside the exotic armor's weapon rule, by the same weapon or another one; if both can't be met together, the plug's need is dropped and the log says so.
+
+## artifacts.csv and artifact_perks.csv: the artifact
+
+The artifact is rolled last and only adds to the build. The page reads which perks each of the artifact's 7 slots takes from the game, so these files only rank and gate perks.
+
+- **artifacts.csv**: Artifact, Season, Elements, Weapon types (each artifact's focus, from the Compendium). Each focus element the subclass has and each focus weapon type the build has makes the artifact more likely.
+- **artifact_perks.csv**: one row per perk per artifact. Artifact and Perk must match the game. **Column**: I, II or III. **Tier**: from Endgame Analysis, looked up in tiers.csv; perk weight = tier weight³ × (1 + shared tag points, capped at 6). **Tags**: shared with the build's tags (and with perks already picked for the same artifact). **Weapon types / Weapon element**: the perk rolls only if one rolled weapon matches (the same weapon when both are filled). **Subclass**: the rolled subclass must be one of these (Arc, Solar, Void, Stasis, Strand, Prismatic). **Abilities**: the build must have one of these: an ability name, or element + slot ("Arc grenade", "Solar super"). **Notes, Effect**: reference only.
