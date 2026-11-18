@@ -1507,7 +1507,7 @@ const hasBuild = () => {
 /* ---------- artifact ----------
    Rolled last, from what the build already has; it never changes the rest of the build.
    data/artifacts.csv: Artifact, Season, Elements, Weapon types (the artifact's focus).
-   data/artifact_perks.csv: Artifact, Perk, Column (I / II / III), Tier, Tags, Weapon types, Weapon element, Subclass, Abilities.
+   data/artifact_perks.csv: Artifact, Perk, Column (I / II / III), Tier, Tags, Weapon types, Weapon element, Weapon perks, Weapon champion, Subclass, Abilities, Boost.
    Which perk fits which slot comes from the artifact's own sockets (a slot lists the perks it takes), so the 2 / 3 / 2 slot layout
    and "a slot takes perks of its tier or lower" aren't written down here. A perk with Weapon types / Weapon element, Subclass or
    Abilities only rolls when the build meets them. */
@@ -1548,7 +1548,11 @@ async function loadArtifactData() {
     for (const t of tags) if (!(t in BUILD_WEIGHTS.tagw)) problems.push(`tag "${t}" not in tag_points.csv (${r.perk})`);
     (ART.perks[norm(r.artifact)] ||= {})[norm(r.perk)] = {
       name: r.perk, col: r.column, tw: tw ?? 1, tags,
-      types: splitList(r["weapon types"]), els: els(r["weapon element"]).filter(e => e !== "prism"),
+      types: splitList(r["weapon types"]), els: els(r["weapon element"]).filter(e => e !== "prism"), wperks: splitList(r["weapon perks"]).map(norm),
+      // "Super", "Grenade" or "Melee" in Weapon element: the weapon matches that rolled ability's element.
+      elAbil: splitList(r["weapon element"]).map(norm).filter(x => ["super", "grenade", "melee"].includes(x)),
+      wchamp: splitList(r["weapon champion"]).map(norm).filter(x => x in CHAMP_LABEL),
+      boost: Number(r.boost) > 0 ? Number(r.boost) : 1,
       sub: els(r.subclass), abil,
     };
   }
@@ -1624,9 +1628,12 @@ function artifactContext() {
 }
 
 function perkMeets(p, ctx) {
-  if (p.types.length || p.els.length) {
+  if (p.types.length || p.els.length || p.elAbil.length || p.wperks.length || p.wchamp.length) {
+    const abilEls = p.elAbil.map(rolledAbilityElement).filter(Boolean);
+    if (p.elAbil.length && !abilEls.length) return false;
     const ok = ctx.weapons.some(i => (!p.types.length || p.types.some(t => weaponTypeKey(t) === weaponTypeKey(i.def.typeName || "")))
-      && (!p.els.length || p.els.includes(i.dmg)));
+      && (!p.els.length || p.els.includes(i.dmg)) && (!abilEls.length || abilEls.includes(i.dmg))
+      && (!p.wperks.length || weaponHasPerk(i, p.wperks)) && (!p.wchamp.length || p.wchamp.some(c => champsOf(i).has(c))));
     if (!ok) return false;
   }
   if (p.sub.length && !p.sub.includes(ctx.subEl)) return false;
@@ -1639,9 +1646,15 @@ function perkMeets(p, ctx) {
   return true;
 }
 
+/* A plugged perk or frame on the weapon, by name (e.g. Micro-Missile Frame). Weapons to pull from Collections have none to read. */
+function weaponHasPerk(i, names) {
+  const socks = state.socketData?.sockets?.[i.id]?.sockets || [];
+  return socks.some(({ plugHash: h }) => h && names.includes(norm(plugName(h))));
+}
+
 function perkWeight(p, tags) {
   const pts = p.tags.reduce((s, t) => s + (tags.has(t) ? (BUILD_WEIGHTS.tagw[t] || 1) : 0), 0);
-  return Math.pow(p.tw, ARTIFACT_TIER_POWER) * (1 + Math.min(pts, 6));
+  return Math.pow(p.tw, ARTIFACT_TIER_POWER) * (1 + Math.min(pts, 6)) * (p.boost || 1);
 }
 
 /* Perks for one artifact: weighted picks one at a time, each keeping the set placeable; each pick's tags count for the next.
@@ -1652,7 +1665,7 @@ function pickArtifactPerks(art, ctx, best = false) {
   const all = [...new Set(art.sockets.flatMap(s => s.options))].map(h => {
     const p = table[norm(plugName(h))];
     if (!p) unknown.add(plugName(h));
-    return { h, p: p || { name: plugName(h), tw: 1, tags: [], types: [], els: [], sub: [], abil: [] } };
+    return { h, p: p || { name: plugName(h), tw: 1, tags: [], types: [], els: [], elAbil: [], wperks: [], wchamp: [], sub: [], abil: [], boost: 1 } };
   }).filter(x => perkMeets(x.p, ctx));
   const tags = new Set(ctx.tags), chosen = [];
   while (chosen.length < art.sockets.length) {

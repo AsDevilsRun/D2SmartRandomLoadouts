@@ -25,8 +25,8 @@ const assert = require("assert");
     const sub = (name, element) => ({ charId: selectedChar(), element, info: { element, s: { def: { name } } },
       abilities: [{ kind: "grenades", hash: 813 }, { kind: "melee", hash: 811 }, { kind: "supers", hash: 812 }], aspects: [], fragments: [], tags: ["amplified", "jolt"] });
     const byName = n => state.items.find(i => i.def.name === n);
-    // Weapons: Kinetic Primary (Auto Rifle), Arc Primary (Pulse Rifle), Arc Rocket (Rocket Launcher).
-    state.roll.weapons = [byName("Kinetic Primary"), byName("Arc Primary"), byName("Arc Rocket")];
+    // Weapons: Kinetic Primary (Auto Rifle), Arc Primary (Pulse Rifle), Solar Sword (Sword).
+    state.roll.weapons = [byName("Kinetic Primary"), byName("Arc Primary"), byName("Solar Sword")];
     state.roll.subclass = sub("Striker", 2);
     const N = 400, perkCount = {}, artCount = {};
     let valid = true;
@@ -60,6 +60,36 @@ const assert = require("assert");
     out.shockSolar = shock; out.needleSolar = needle;
     // Arc grenade/melee/super (the Striker above): Conductive Cosmic Needle can roll.
     out.needleArc = rate("NPA Repulsion Regulator/Conductive Cosmic Needle");
+    // Energy Acceleration needs a weapon with Micro-Missile Frame (read from the weapon's plugged sockets).
+    const curio = fake("Implement of Curiosity");
+    loadArtifacts = async () => [curio];
+    const ea = async () => { let c = 0; for (let k = 0; k < 150; k++) { const a = await rollArtifact(selectedChar()); if (a.perks.some(p => p.name === "Energy Acceleration")) c++; } return c; };
+    state.socketData = { sockets: {} };
+    out.eaWithout = await ea();
+    state.plugDefs[9300] = { n: "Micro-Missile Frame" };
+    state.socketData = { sockets: { [state.roll.weapons[1].id]: { sockets: [{ plugHash: 9300 }] } } };
+    out.eaWith = await ea();
+    loadArtifacts = async () => [npa, censer];
+    // Elemental Supercharger needs an Overload weapon matching the super's element (Thundercrash here: Arc).
+    state.roll.subclass = sub("Striker", 2);
+    const tablet = fake("Tablet of Ruin");
+    loadArtifacts = async () => [tablet];
+    const es = async () => { let c = 0; for (let k = 0; k < 150; k++) { const a = await rollArtifact(selectedChar()); if (a.perks.some(p => p.name === "Elemental Supercharger")) c++; } return c; };
+    state.champs = {};
+    out.esNone = await es();
+    const solar = state.items.find(i => i.def.name === "Solar Fusion");
+    state.roll.weapons = [byName("Kinetic Primary"), solar, byName("Arc Rocket")];
+    state.champs = { [solar.id]: new Set(["overload"]) };
+    out.esWrongEl = await es();
+    state.champs = { [byName("Arc Rocket").id]: new Set(["overload"]) };
+    out.esMatch = await es();
+    // Boost: Argent Ordnance (Boost 10) with a rocket nearly always takes a tier III slot on Queensfoil Censer.
+    loadArtifacts = async () => [censer];
+    let ao = 0;
+    for (let k = 0; k < 150; k++) { const a = await rollArtifact(selectedChar()); if (a.perks.some(p => p.name === "Argent Ordnance")) ao++; }
+    out.argentOrdnance = ao / 150;
+    state.champs = {};
+    loadArtifacts = async () => [npa, censer];
     // Off: no artifact.
     state.rules.artifact = false; await rerollArtifact(); out.off = state.roll.artifact; state.rules.artifact = true;
     // Equipping: Volatile Flow (tier I) sits in slot 6 but is wanted in slot 0, Supernova goes in slot 6; slot 2 is already right.
@@ -88,6 +118,12 @@ const assert = require("assert");
   assert.equal(r.shockSolar, 0);
   assert.equal(r.needleSolar, 0, "Conductive Cosmic Needle needs an Arc or Void ability");
   assert(r.needleArc > 0, "Conductive Cosmic Needle rolls with Arc abilities");
+  assert.equal(r.eaWithout, 0, "Energy Acceleration needs a Micro-Missile Frame weapon");
+  assert(r.eaWith > 0, "Energy Acceleration rolls with one");
+  assert.equal(r.esNone, 0, "Elemental Supercharger needs an Overload weapon");
+  assert.equal(r.esWrongEl, 0, "of the super's element");
+  assert(r.esMatch > 0, "rolls with an Arc Overload weapon and an Arc super");
+  assert(r.argentOrdnance > 0.8, "Boost makes Argent Ordnance near-certain with a rocket");
   assert.equal(r.off, null);
   assert.deepEqual(r.problems, []);
   assert.deepEqual(r.calls, [[6, "Empty Artifact Slot"], [0, "Volatile Flow"], [6, "Supernova"]]);

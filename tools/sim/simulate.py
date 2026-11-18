@@ -190,17 +190,19 @@ def factors(cls, nb=400, per_armor=0):
         f = [min(1000, max(0.001, fi * math.sqrt(tgt / si))) if si > 0 else fi for fi, si in zip(f, s)]
     return f
 
-def roll(b, f):
+def roll(b, f, with_leg=False):
+    """The exotic weapon; with_leg: also the legendary a weapon rule picked (or None)."""
     ww = lambda w: raw_w(w, b) * (f[IDX[w["name"]]] if w["exo"] else 1)
     hard = b["hard"] or (b["chance"] and random.random() < b["chance"])
+    out = lambda n, leg=None: (n, leg) if with_leg else n
     if hard:
         cands = {w["name"]: w for w in LEG + EXO if meets(w, b["need"])}
         if cands:
             p = wpick(list(cands.values()), ww)
-            if p["exo"]: return p["name"]
+            if p["exo"]: return out(p["name"])
             pool = [w for w in EXO if w["bucket"] != p["bucket"] and not (p["ammo"] in ("primary", "special") and w["ammo"] == p["ammo"])]
-            return wpick(pool, ww)["name"]
-    return wpick(EXO, ww)["name"]
+            return out(wpick(pool, ww)["name"], p)
+    return out(wpick(EXO, ww)["name"])
 
 
 AB = json.load(open(INP("abilities.json"), encoding="utf-8"))
@@ -262,6 +264,123 @@ for cls in ["Hunter", "Titan", "Warlock"]:
             f = {h: min(1000, max(0.001, f[h] * math.sqrt((1 / len(hs)) / sh[h]))) if sh[h] > 0 else f[h] for h in hs}
         FAC[(cls,) + k] = f
 
+# ---- artifact (mirrors build.html; rolled last, from its own random stream so the outputs above don't change) ----
+# The page reads each artifact's slots from the game; here: 2 slots take tier I, 3 take I-II, 2 take I-III, and all 7 artifacts
+# are owned. Legendaries get a random element from their slot (kinetic: Kinetic/Stasis/Strand, energy: Arc/Solar/Void,
+# power: Arc/Solar/Void/Stasis/Strand) and fill the slots the exotic (and a rule-picked legendary) leave, with No double
+# primary / No double special; legendary weapon weighting (soft boosts, super boost) isn't modeled.
+AR = random.Random(11)
+ART_TIER_POWER, ART_FIT_POWER, ART_FOCUS_BONUS = 3, 3, 0.25
+SLOT_TIERS = [1, 1, 2, 2, 2, 3, 3]
+ROMAN = {"I": 1, "II": 2, "III": 3}
+EL_WORDS = {"kinetic", "arc", "solar", "void", "stasis", "strand"}
+def els_of(v): return [norm(x) for x in lst(v) if norm(x) in EL_WORDS | {"prismatic"}]
+ARTF = {norm(r["Artifact"]): {"name": r["Artifact"], "els": els_of(r["Elements"]), "wt": lst(r["Weapon types"])} for r in rd("artifacts.csv")}
+ARTS = defaultdict(list)
+for r in rd("artifact_perks.csv"):
+    ab = []
+    for x in lst(r["Abilities"]):
+        m = norm(x).split(" ")
+        ab.append({"el": m[0], "slot": m[1]} if len(m) == 2 and m[0] in EL_WORDS and m[1] in ("grenade", "melee", "super", "class") else {"name": nm(x)})
+    ARTS[r["Artifact"]].append({"name": r["Perk"], "col": ROMAN[r["Column"]], "tier": r["Tier"], "tw": TIER.get(r["Tier"], 1), "tags": [norm(t) for t in lst(r["Tags"])],
+        "types": lst(r["Weapon types"]), "els": [e for e in els_of(r["Weapon element"]) if e != "prismatic"], "wperks": lst(r.get("Weapon perks")), "wchamp": lst(r.get("Weapon champion")), "sub": els_of(r["Subclass"]), "abil": ab,
+        "elAbil": [norm(x) for x in lst(r["Weapon element"]) if norm(x) in ("super", "grenade", "melee")], "boost": float(r.get("Boost") or 1)})
+SLOT_ELS = {"kinetic": ["kinetic", "stasis", "strand"], "energy": ["arc", "solar", "void"], "power": ["arc", "solar", "void", "stasis", "strand"]}
+def leg_with_el(w): return {**w, "el": AR.choice(SLOT_ELS[w["bucket"]])}
+def loadout(exo_name, leg):
+    ws = [{**next(w for w in EXO if w["name"] == exo_name)}]
+    ws[0]["el"] = norm(ws[0].get("el", "kinetic"))
+    if leg: ws.append(leg_with_el(leg))
+    for bk in ("kinetic", "energy", "power"):
+        if any(w["bucket"] == bk for w in ws): continue
+        used = {w["ammo"] for w in ws if w["ammo"] in ("primary", "special")}
+        cands = [w for w in LEG if w["bucket"] == bk and w["ammo"] not in used]
+        if cands: ws.append(leg_with_el(AR.choice(cands)))
+    return ws
+def super_el(cls, h):
+    return next((e for e in SUBS[:-1] if h in AB[cls][e]["super"]), "")
+def perk_meets(p, ctx):
+    # Stand-in weapons have no perks or frames, and the simulation has no champion data, so a Weapon perks or Weapon champion
+    # need (Energy Acceleration, Elemental Supercharger) is never met here.
+    if p["wperks"] or p["wchamp"]: return False
+    if p["elAbil"]:
+        want = {ctx["ab_el"].get(x) for x in p["elAbil"]} - {"", None}
+        if not any(w["el"] in want for w in ctx["weapons"]): return False
+    if p["types"] or p["els"]:
+        if not any((not p["types"] or w["type"] in p["types"]) and (not p["els"] or w["el"] in p["els"]) for w in ctx["weapons"]): return False
+    if p["sub"] and ctx["el"] not in p["sub"]: return False
+    if p["abil"]:
+        def ok(a):
+            if "name" in a: return a["name"] in ctx["abil_names"]
+            return ctx["ab_el"].get(a["slot"]) == a["el"]
+        if not any(ok(a) for a in p["abil"]): return False
+    return True
+def perk_w(p, tags):
+    pts = sum(TAGW.get(t, 1) for t in p["tags"] if t in tags)
+    return p["tw"] ** ART_TIER_POWER * (1 + min(pts, 6)) * p["boost"]
+def placeable(cols):   # nested slots: at most 2 tier III, at most 5 tier II or III, at most 7 in all
+    return sum(c == 3 for c in cols) <= 2 and sum(c >= 2 for c in cols) <= 5 and len(cols) <= 7
+def pick_perks(perks, ctx, best):
+    allp = [p for p in perks if perk_meets(p, ctx)]
+    tags, chosen = set(ctx["tags"]), []
+    while len(chosen) < 7:
+        cands = [p for p in allp if p not in chosen and placeable([c["col"] for c in chosen] + [p["col"]])]
+        if not cands: break
+        wf = lambda p: perk_w(p, tags)
+        nxt = max(cands, key=wf) if best else apick(cands, wf)
+        chosen.append((nxt)); tags.update(nxt["tags"])
+    return chosen, tags
+def apick(items, wf):
+    ws = [wf(x) for x in items]; t = sum(ws)
+    r = AR.random() * t
+    for x, w in zip(items, ws):
+        r -= w
+        if r < 0: return x
+    return items[-1]
+def art_weight(name, ctx):
+    chosen, _ = pick_perks(ARTS[name], ctx, True)
+    if not chosen: return 0
+    tags = set(ctx["tags"]); fit = 0
+    for p in chosen: fit += perk_w(p, tags); tags.update(p["tags"])
+    fit /= len(SLOT_TIERS)
+    f = ARTF.get(norm(name)); m = 0
+    if f:
+        if ctx["el"] in f["els"]: m += 1
+        types = {w["type"] for w in ctx["weapons"]}
+        m += sum(t in types for t in f["wt"])
+    return (fit * (1 + ART_FOCUS_BONUS * m)) ** ART_FIT_POWER
+def roll_artifact(b, cls, picked, weapons):
+    el = b["el"]
+    sup = picked.get("super", "")
+    sub_el = super_el(cls, sup) if el == "prismatic" else el
+    ab_el = {"super": sub_el, "class": sub_el,
+             "grenade": AEL.get(picked.get("grenade", "")) or ("" if el == "prismatic" else el),
+             "melee": AEL.get(picked.get("melee", "")) or ("" if el == "prismatic" else el)}
+    tags = set(b["tags"])
+    for w in weapons:
+        if w["exo"]: tags.update(EXW.get(w["name"], []))
+    ctx = {"el": el, "weapons": weapons, "tags": tags, "ab_el": ab_el, "abil_names": {nm(h) for h in picked.values()}}
+    ws = {a: art_weight(a, ctx) for a in ARTS}
+    names = [a for a in ARTS if ws[a] > 0]
+    # Which perks this build could use (its requirements met), for the "when the build can use it" rates.
+    for an, ps in ARTS.items():
+        for p in ps:
+            if REQ[(an, p["name"])] and perk_meets(p, ctx): ELIG[(cls, an, p["name"])] += 1
+    if not names: return None, []
+    a = apick(names, lambda x: ws[x])
+    chosen, _ = pick_perks(ARTS[a], ctx, False)
+    for an, ps in ARTS.items():
+        for p in ps:
+            if REQ[(an, p["name"])] and perk_meets(p, ctx):
+                if an == a: ELIG_ART[(cls, an, p["name"])] += 1
+    for p in chosen:
+        if REQ[(a, p["name"])]: ELIG_PICK[(cls, a, p["name"])] += 1
+    return a, [p["name"] for p in chosen]
+ARTC = defaultdict(Counter); ARTN = Counter(); ARTP = defaultdict(Counter)
+# Perks with a requirement (weapon type / element, subclass, abilities): rolls that meet it, those that pick its artifact, those that pick it.
+REQ = {(a, p["name"]): bool(p["types"] or p["els"] or p["elAbil"] or p["wperks"] or p["wchamp"] or p["sub"] or p["abil"]) for a, ps in ARTS.items() for p in ps}
+ELIG = Counter(); ELIG_ART = Counter(); ELIG_PICK = Counter()
+
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 60000
 WF = {cls: factors(cls, per_armor=20) for cls in ["Hunter", "Titan", "Warlock"]}
 C = defaultdict(Counter); NC = Counter(); NS = Counter(); AC = defaultdict(Counter)
@@ -271,14 +390,20 @@ for k in range(N):
     C["sub"][(cls, el)] += 1; C["armor"][(cls, b["armor"])] += 1
     for a in b["aspects"]: C["asp"][(cls, el, a)] += 1
     for f in b["frags"]: C["frag"][(cls, el, f)] += 1
-    C["wep"][(cls, roll(b, WF[cls]))] += 1
+    exo_name, leg = roll(b, WF[cls], with_leg=True)
+    C["wep"][(cls, exo_name)] += 1
     R = rule(b["armor"]); tags, ment = b["atags"], b["ment"]
     forced = forced_for(R, el, cls, tags, ment)
+    picked = {}
     for s in SLOTS_ORDER:
         ch = AB[cls][el][s]
         if not ch: continue
         h = forced.get(s) or wpick(ch, lambda h: plug_w(h, tags, ment) * FAC.get((cls, el, s), {}).get(h, 1))
-        AC[(cls, el)][(s, h)] += 1
+        AC[(cls, el)][(s, h)] += 1; picked[s] = h
+    art, perks = roll_artifact(b, cls, picked, loadout(exo_name, leg))
+    if art:
+        ARTC[(cls, el)][art] += 1; ARTN[cls] += 1
+        for pk in perks: ARTP[(cls, art)][pk] += 1
 import os
 D = (sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "out")) + os.sep; os.makedirs(D, exist_ok=True)
 ORD = ["Arc","Solar","Void","Stasis","Strand","Prismatic"]; CL = ["Hunter","Titan","Warlock"]
@@ -302,4 +427,42 @@ order = {"super": 0, "grenade": 1, "melee": 2, "class": 3, "movement": 4}
 rows = [[c, e.capitalize(), s, h, round(100*v/NS[(c, e)], 1)] for (c, e), cc in AC.items() for (s, h), v in cc.items()]
 rows.sort(key=lambda r: (CL.index(r[0]), ORD.index(r[1]), order[r[2]], -r[4]))
 wcsv("abilities.csv", ["class","subclass","slot","ability","rate_pct"], rows)
+rows = [[c, e.capitalize(), a, round(100*v/NS[(c, e)], 1)] for (c, e), cc in ARTC.items() for a, v in cc.items()]
+rows.sort(key=lambda r: (CL.index(r[0]), ORD.index(r[1]), -r[3]))
+wcsv("artifacts.csv", ["class","subclass","artifact","rate_pct"], rows)
+allc = Counter()
+for (c, e), cc in ARTC.items(): allc.update(cc)
+nall = sum(NC.values())
+wcsv("artifacts_all.csv", ["artifact"] + [f"{c.lower()}_pct" for c in CL] + ["all_pct"],
+     sorted([[a] + [round(100*sum(ARTC[(c, e)][a] for e in SUBS)/NC[c], 1) for c in CL] + [round(100*allc[a]/nall, 1)] for a in ARTS], key=lambda r: -r[-1]))
+TIERP = {(a, p["name"]): (p["col"], p["tier"]) for a, ps in ARTS.items() for p in ps}
+rows = []
+for a, ps in ARTS.items():
+    for p in ps:
+        n_all = sum(ARTP[(c, a)][p["name"]] for c in CL); d_all = sum(allc[a] for _ in [0])
+        rows.append([a, p["name"], ["", "I", "II", "III"][p["col"]], p["tier"]] +
+                    [round(100*ARTP[(c, a)][p["name"]]/max(1, sum(ARTC[(c, e)][a] for e in SUBS)), 1) for c in CL] + [round(100*n_all/max(1, allc[a]), 1)])
+rows.sort(key=lambda r: (list(ARTS).index(r[0]), -r[-1]))
+wcsv("artifact_perks.csv", ["artifact","perk","column","tier"] + [f"{c.lower()}_pct" for c in CL] + ["all_pct"], rows)
+# For perks with a requirement: of the rolls whose build meets it, how many pick its artifact, how many of those take the perk, and
+# how many take the perk at all.
+RAW = {r["Artifact"] + "|" + r["Perk"]: r for r in rd("artifact_perks.csv")}
+def req_text(a, p):
+    r = RAW[a + "|" + p]
+    el = r["Weapon element"].replace(", ", "/")
+    el = {"Super": "Super-element", "Grenade": "Grenade-element", "Melee": "Melee-element"}.get(el, el)
+    w = " ".join(x for x in [el, r.get("Weapon champion", "").replace(", ", "/"), r["Weapon types"].replace(", ", "/")] if x)
+    if w or r.get("Weapon perks"): w = (w or "A") + " weapon" + (" with " + r["Weapon perks"].replace(", ", " or ") if r.get("Weapon perks") else "")
+    parts = [w, ("Subclass " + r["Subclass"].replace(", ", "/")) if r["Subclass"] else "", r["Abilities"].replace(", ", " or ") if r["Abilities"] else ""]
+    return "; ".join(x for x in parts if x)
+rows = []
+for a, ps in ARTS.items():
+    for p in ps:
+        if not REQ[(a, p["name"])]: continue
+        k = lambda c: (c, a, p["name"])
+        e = sum(ELIG[k(c)] for c in CL); ea = sum(ELIG_ART[k(c)] for c in CL); ep = sum(ELIG_PICK[k(c)] for c in CL)
+        rows.append([a, p["name"], ["", "I", "II", "III"][p["col"]], p["tier"], req_text(a, p["name"]),
+                     round(100*e/nall, 1), round(100*ea/max(1, e), 1), round(100*ep/max(1, ea), 1), round(100*ep/max(1, e), 1)])
+rows.sort(key=lambda r: (list(ARTS).index(r[0]), -r[-1]))
+wcsv("artifact_perk_fit.csv", ["artifact","perk","column","tier","needs","builds_pct","artifact_pct","perk_on_artifact_pct","perk_pct"], rows)
 print("done", dict(NC))
