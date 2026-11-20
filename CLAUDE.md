@@ -69,6 +69,7 @@ Everything runs in the visitor's browser: HTML is layout, CSS is styling, all lo
 - **90-day sign-in** (planned, not started): switch the Bungie app to a confidential client (gets a client secret and refresh tokens; Bungie's docs give `refresh_expires_in` 7776000 s = 90 days), hold the secret in a small Cloudflare Worker that does the code exchange and refreshes, and change `handleRedirect`, token storage and the 401 path in `core.js`. Set up the Worker first, then switch the app type and commit the site change together. Unverified: whether Bungie issues a new refresh token on each refresh (if not, sign-in lasts 90 days from first sign-in), and whether the current public flow stops working the moment the app becomes confidential.
 - Saved exotic weapon factors don't recalculate when the player unlocks a new aspect or fragment; ability factors recalculate on any weapon inventory change (cheap).
 - Visitor counts: GitHub Pages has none; would need something like GoatCounter or Cloudflare Web Analytics.
+- **Exotic class item perks** (very far back burner; don't raise unprompted): today Relativism / Stoicism / Solipsism roll as plain exotic armor (Prismatic only) and keep whatever perks the picked copy has. Weighting by their Spirit perks would mean a tag set and synergy row per perk (each copies another exotic, including the other classes'), pairs of rows that must be met together, per-copy socket reads, and a new parity model (owned perk pairs vary per player). That roughly doubles the synergy work for about 2% of a class's rolls. Revisit only if exotic armor in general moves to rolled perks.
 
 ## tools/
 
@@ -104,4 +105,10 @@ jsdom loads the real pages with a mocked Bungie API and fake IndexedDB. The suit
 
 - Roll-rate dashboard ("Smart Build roll rates"): https://claude.ai/artifact/1NuW7kXsBh6xxamSYuEmYm (artifact slug 030ef984-b5b4-4fab-99e2-8d1bc8dce84a). Its datasets are the simulation's six output CSVs plus `parity.csv`, uploaded as assets; a Parity checks section shows `parity.csv`. Last updated from commit b92ddee plus the artifact Boost / Elemental Supercharger changes, 300,000 presses; has Artifacts, Artifacts by subclass, Artifact perks and Perks when the build can use them sections (datasets `artifacts_all`, `artifacts`, `artifact_perks`, `artifact_perk_fit`).
 - "Ability pick rates: data sources" sheet: https://claude.ai/artifact/X7RwPpnv9YkY8aMtBQXGwR. Its Class abilities row ("partly inferred") is out of date; class abilities now come from the Compendium.
-- Reference spreadsheets the owner shared: Destiny Data Compendium and Destiny 2: Endgame Analysis (source of most tags and tiers).
+
+## Reference spreadsheets
+
+Always check these two sheets for game data (perks, abilities, aspects, fragments, exotics, artifact perks, tiers, mechanics) before relying on memory or other sources. Cite the sheet and tab used.
+
+- **Destiny 2: Endgame Analysis**: https://docs.google.com/spreadsheets/d/1JM-0SlxVDAi-C6rGVlLxa-J1WGewEeL8Qvq4htWZHhY/edit. Source of most tags and tiers. Current tabs include per-weapon-type sheets (Autos, Bows, HCs, … Rockets, Swords), Archetypes, Exotic Weapons, Perks, Origin Traits, Set Bonuses, Artifact Mods, Fragments, Aspects, Subclasses, Encounters, Changelog. Ignore tabs marked "(old)", "(outdated)" or "(ignore)". Readable through the Google Drive connector.
+- **Destiny Data Compendium**: https://docs.google.com/spreadsheets/d/1WaxvbLx7UoSZaBqdFr1u32F2uWVLo-CJunJB4nlGUE4/edit?gid=1038486120#gid=1038486120. Source of aspects per subclass and abilities per slot (incl. class abilities). Tabs: Weapon Perks, Armor Perks, Artifact Perks, Armor Mods, Arc, Solar, Void, Stasis, Strand, Prismatic, Exotic Class, Class Abilities, Exotic Weapons, Exotic Armors, Game Mechanics. Ignore tabs starting with "OLD". Not reachable through the Drive connector (not in the owner's Drive); if WebFetch can't read it, ask the owner to upload an export.
