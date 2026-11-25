@@ -117,6 +117,15 @@ for v in W.values(): AMMO_OF.setdefault(v["type"], v["ammo"])
 LEG = [{"name": f"(legendary {t})", "type": t, "ammo": AMMO_OF[t], "bucket": "power" if AMMO_OF[t] == "power" else ("kinetic" if i % 2 else "energy"), "exo": False}
        for t in TYPES for i in range(LEG_PER_TYPE)]
 EXO = [{"name": n, **W[n], "exo": True} for n in EXW if n in W]
+# Ammo rules as build.html with its defaults (No double primary, No double special): a Special trace rifle always has another
+# Special weapon, which overrides No double special for the pair. Stand-in legendaries supply Special in Kinetic and Energy.
+def is_special_trace(w): return w["ammo"] == "special" and w["type"] == "Trace Rifle"
+def ammo_fits(ws, w):
+    if w["ammo"] == "primary" and any(x["ammo"] == "primary" for x in ws): return False
+    al = ws + [w]; sp = [x for x in al if x["ammo"] == "special"]
+    if len(sp) > 1 and not (len(sp) == 2 and any(map(is_special_trace, sp))): return False
+    open_ = any(not any(x["bucket"] == bk for x in al) for bk in ("kinetic", "energy"))
+    return open_ or not (len(sp) == 1 and is_special_trace(sp[0]))
 def meets(w, need):
     if norm(w["name"]) in need["excl"]: return False
     return w["name"] in need["weapons"] or w["type"] in need["types"]
@@ -200,7 +209,7 @@ def roll(b, f, with_leg=False):
         if cands:
             p = wpick(list(cands.values()), ww)
             if p["exo"]: return out(p["name"])
-            pool = [w for w in EXO if w["bucket"] != p["bucket"] and not (p["ammo"] in ("primary", "special") and w["ammo"] == p["ammo"])]
+            pool = [w for w in EXO if w["bucket"] != p["bucket"] and ammo_fits([p], w)]
             return out(wpick(pool, ww)["name"], p)
     return out(wpick(EXO, ww)["name"])
 
@@ -268,7 +277,7 @@ for cls in ["Hunter", "Titan", "Warlock"]:
 # The page reads each artifact's slots from the game; here: 2 slots take tier I, 3 take I-II, 2 take I-III, and all 7 artifacts
 # are owned. Legendaries get a random element from their slot (kinetic: Kinetic/Stasis/Strand, energy: Arc/Solar/Void,
 # power: Arc/Solar/Void/Stasis/Strand) and fill the slots the exotic (and a rule-picked legendary) leave, with No double
-# primary / No double special; legendary weapon weighting (soft boosts, super boost) isn't modeled.
+# primary / No double special and the trace rifle pairing (ammo_fits); legendary weapon weighting (soft boosts, super boost) isn't modeled.
 AR = random.Random(11)
 ART_TIER_POWER, ART_FIT_POWER, ART_FOCUS_BONUS = 3, 3, 0.25
 SLOT_TIERS = [1, 1, 2, 2, 2, 3, 3]
@@ -293,8 +302,7 @@ def loadout(exo_name, leg):
     if leg: ws.append(leg_with_el(leg))
     for bk in ("kinetic", "energy", "power"):
         if any(w["bucket"] == bk for w in ws): continue
-        used = {w["ammo"] for w in ws if w["ammo"] in ("primary", "special")}
-        cands = [w for w in LEG if w["bucket"] == bk and w["ammo"] not in used]
+        cands = [w for w in LEG if w["bucket"] == bk and ammo_fits(ws, w)]
         if cands: ws.append(leg_with_el(AR.choice(cands)))
     return ws
 def super_el(cls, h):

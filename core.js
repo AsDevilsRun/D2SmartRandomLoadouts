@@ -666,6 +666,24 @@ function checkChampPool(rules, pool) {
   return champs;
 }
 
+/* Ammo rules. A Special-ammo trace rifle always rolls with another Special weapon, which overrides "No double special" for
+   that pair (trace rifles play like primaries). Primary and Heavy trace rifles (Lodestar, Microcosm) aren't paired. */
+const isSpecialTrace = i => i.def.ammo === 2 && norm(i.def.typeName || "") === "trace rifle";
+/* set: weapons in different slots. open: an empty slot could still supply a Special weapon. */
+function specialAmmoOK(rules, set, open = false) {
+  const sp = set.filter(i => i.def.ammo === 2);
+  if (rules.noDoubleSpecial && sp.length > 1 && !(sp.length === 2 && sp.some(isSpecialTrace))) return false;
+  return open || !(sp.length === 1 && isSpecialTrace(sp[0]));
+}
+/* Slots in which the pool has a Special weapon. */
+const specialBuckets = pool => new Set(pool.filter(i => i.def.ammo === 2).map(i => i.def.bucket));
+/* Whether weapon i can join set (weapons already chosen for other slots). sb: specialBuckets(pool). */
+function ammoFits(rules, sb, set, i) {
+  if (rules.noDoublePrimary && i.def.ammo === 1 && set.some(w => w.def.ammo === 1)) return false;
+  const all = [...set, i];
+  return specialAmmoOK(rules, all, WEAPON_BUCKETS.some(b => sb.has(b) && !all.some(w => w.def.bucket === b)));
+}
+
 /* Complete search for a weapon loadout, used when the random attempts in rollWeapons all fail.
    Finds a valid loadout whenever one exists (within a generous step limit). Copies that behave the same
    (name, champion stuns, element) are tried once. orderNames(names) gives the order names are tried in (random or weighted), so the
@@ -700,7 +718,7 @@ function searchWeapons(rules, pool, champs, need, orderNames) {
   });
   let budget = 300000;
   const picks = [];
-  const ammo = { 1: 0, 2: 0, 3: 0 };
+  const sb = specialBuckets(pool);
   const rec = (k, exo) => {
     if (--budget < 0) return false;
     const covered = new Set(picks.flatMap(i => [...champsOf(i)]));
@@ -714,11 +732,10 @@ function searchWeapons(rules, pool, champs, need, orderNames) {
     for (const g of groups[buckets[k]]) {
       const i = g[0];
       if (exo && isExo(i)) continue;
-      if (rules.noDoublePrimary && i.def.ammo === 1 && ammo[1]) continue;
-      if (rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]) continue;
-      picks.push(pick(g)); ammo[i.def.ammo]++;
+      if (!ammoFits(rules, sb, picks, i)) continue;
+      picks.push(pick(g));
       if (rec(k + 1, exo || isExo(i))) return true;
-      picks.pop(); ammo[i.def.ammo]--;
+      picks.pop();
     }
     return false;
   };
@@ -767,13 +784,10 @@ function rerollWeaponSlot(rules, E, bucket, need = null, forceNeed = false) {
   const cur = state.roll.weapons || [];
   const old = cur.find(i => i.def.bucket === bucket);
   const fixed = cur.filter(i => i.def.bucket !== bucket);
-  const ammo = { 1: 0, 2: 0, 3: 0 };
-  for (const i of fixed) ammo[i.def.ammo]++;
   const exoFixed = fixed.some(isExo);
   let cands = weaponPool(rules, E).filter(i => i.def.bucket === bucket
     && (!exoFixed || !isExo(i))
-    && !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1])
-    && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]));
+    && ammoFits(rules, new Set(), fixed, i));
   if (rules.guaranteedExoticWeapon && !exoFixed) cands = cands.filter(isExo);
   const champMissing = requiredChamps(rules).filter(c => !fixed.some(i => champsOf(i).has(c)));
   if (champMissing.length) {
@@ -797,11 +811,12 @@ function rollWeapons(rules, E, need = null) {
     throw new Error("No eligible exotic weapon" + (E ? ` for ${DMG_NAME[E]} Monochromatic` : "") + " (check the exotic list).");
   }
   const champs = checkChampPool(rules, pool);
+  const sb = specialBuckets(pool);
   for (let attempt = 0; attempt < 300; attempt++) {
-    const picks = {}, ammo = { 1: 0, 2: 0, 3: 0 };
+    const picks = {};
     let exo = false, ok = true;
-    const take = i => { picks[i.def.bucket] = i; ammo[i.def.ammo]++; if (isExo(i)) exo = true; };
-    const ammoOK = i => !(rules.noDoublePrimary && i.def.ammo === 1 && ammo[1]) && !(rules.noDoubleSpecial && i.def.ammo === 2 && ammo[2]);
+    const take = i => { picks[i.def.bucket] = i; if (isExo(i)) exo = true; };
+    const ammoOK = i => ammoFits(rules, sb, Object.values(picks), i);
     for (const n of needList(need)) { // n.prefer (build.html) can favor some of them
       if (Object.values(picks).some(n.test)) continue;
       const p = pickWeapon(pool.filter(i => n.test(i) && !picks[i.def.bucket] && ammoOK(i) && (!exo || !isExo(i))), n);

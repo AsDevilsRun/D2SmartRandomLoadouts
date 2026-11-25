@@ -178,7 +178,7 @@ const PAGE = {
   busyIds: ["btnRollArmorSub", "btnRollArtifact"],
 };
 </script>
-<script src="core.js?v=5"></script>
+<script src="core.js?v=6"></script>
 <script>
 "use strict";
 
@@ -464,7 +464,7 @@ function pairSturm(weapons, rules, E, need, { avoid = null, force = false, force
   const fits = c => {
     if (c.def.bucket === sturm.def.bucket || (isExo(c) && isExo(sturm))) return false;
     const set = [...weapons.filter(i => i.def.bucket !== c.def.bucket), c];
-    if (rules.noDoubleSpecial && set.filter(i => i.def.ammo === 2).length > 1) return false;
+    if (!specialAmmoOK(rules, set)) return false;   // No double special, and a Special trace rifle keeps its Special partner
     if (!requiredChamps(rules).every(ch => set.some(i => champsOf(i).has(ch)))) return false;
     if (!needList(need).every(n => set.some(n.test))) return false;
     return true;
